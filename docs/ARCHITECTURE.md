@@ -69,13 +69,40 @@
 
 8 TMSC edges (±1 tolerance) while TCKC held high transitions from OFFLINE → ESCAPE → ONLINE_ACT.
 
-<img src="https://svg.wavedrom.com/{signal:[{name:'TCKC',wave:'1...................0'},{name:'TMSC',wave:'0101010101010101....'},{},...{name:'State',wave:'2...3...............4',data:['OFFLINE','ESCAPE','ONLINE_ACT']}],config:{hscale:2},head:{text:'Escape Sequence: 8 TMSC Edges'}}"/>
+```wavedrom
+{
+  "signal": [
+    {"name": "TCKC", "wave": "1...................0"},
+    {"name": "TMSC", "wave": "0101010101010101...."},
+    {},
+    {"name": "State", "wave": "2...3...............4", "data": ["OFFLINE", "ESCAPE", "ONLINE_ACT"]}
+  ],
+  "config": {"hscale": 2},
+  "head": {"text": "Escape Sequence: 8 TMSC Edges"}
+}
+```
+
+[View Waveform](https://wavedrom.com/editor.html?signal=%5B%7Bname%3A%27TCKC%27%2Cwave%3A%271...................0%27%7D%2C%7Bname%3A%27TMSC%27%2Cwave%3A%270101010101010101....%27%7D%2C%7B%7D%2C%7Bname%3A%27State%27%2Cwave%3A%272...3...............4%27%2Cdata%3A%5B%27OFFLINE%27%2C%27ESCAPE%27%2C%27ONLINE_ACT%27%5D%7D%5D%2Cconfig%3A%7Bhscale%3A2%7D%2Chead%3A%7Btext%3A%27Escape%20Sequence%3A%208%20TMSC%20Edges%27%7D)
 
 ### 2. Online Activation Code (OAC + EC + CP)
 
 12-bit sequence: OAC (4 bits) + EC (4 bits) + CP (4 bits) transmitted LSB first.
 
-<img src="https://svg.wavedrom.com/{signal:[{name:'TCKC',wave:'p............'},{name:'TMSC',wave:'x1100x1000x0000x'},{},...{name:'Field',wave:'x2...3...4...x',data:['OAC','EC','CP']},{name:'State',wave:'2............3',data:['ONLINE_ACT','OSCAN1']}],config:{hscale:2},head:{text:'OAC Sequence: 1100 + 1000 + 0000'}}"/>
+```wavedrom
+{
+  "signal": [
+    {"name": "TCKC", "wave": "p............"},
+    {"name": "TMSC", "wave": "x1100x1000x0000x"},
+    {},
+    {"name": "Field", "wave": "x2...3...4...x", "data": ["OAC", "EC", "CP"]},
+    {"name": "State", "wave": "2............3", "data": ["ONLINE_ACT", "OSCAN1"]}
+  ],
+  "config": {"hscale": 2},
+  "head": {"text": "OAC Sequence: 1100 + 1000 + 0000"}
+}
+```
+
+[View Waveform](https://wavedrom.com/editor.html?signal=%5B%7Bname%3A%27TCKC%27%2Cwave%3A%27p............%27%7D%2C%7Bname%3A%27TMSC%27%2Cwave%3A%27x1100x1000x0000x%27%7D%2C%7B%7D%2C%7Bname%3A%27Field%27%2Cwave%3A%27x2...3...4...x%27%2Cdata%3A%5B%27OAC%27%2C%27EC%27%2C%27CP%27%5D%7D%2C%7Bname%3A%27State%27%2Cwave%3A%272............3%27%2Cdata%3A%5B%27ONLINE_ACT%27%2C%27OSCAN1%27%5D%7D%5D%2Cconfig%3A%7Bhscale%3A2%7D%2Chead%3A%7Btext%3A%27OAC%20Sequence%3A%201100%20%2B%201000%20%2B%200000%27%7D)
 
 - **OAC**: `1100` (LSB first) = TAP.7 star-2
 - **EC**: `1000` = Short form, RTI state
@@ -86,7 +113,27 @@
 
 Each packet contains 3 bits transmitted over 3 TCKC cycles. TCK pulses on the 3rd bit.
 
-<img src="https://svg.wavedrom.com/{signal:[{name:'TCKC',wave:'p..p..p..p..'},{name:'TMSC',wave:'x3.4.z.3.4.z.',data:['nTDI','TMS','TDO','nTDI','TMS','TDO']},{name:'TMSC_OEN',wave:'1.....0.....0'},{},...{name:'TCK',wave:'0.....1.0...1.0.'},{name:'TMS',wave:'x.3..........',data:['TMS']},{name:'TDI',wave:'x3...........',data:['TDI']},{name:'TDO',wave:'x.....4......',data:['TDO']},{},...{name:'Bit',wave:'x2.3.4.2.3.4.',data:['0','1','2','0','1','2']}],config:{hscale:3},head:{text:'OScan1 3-Bit Packets (nTDI = ~TDI)'}}"/>
+```wavedrom
+{
+  "signal": [
+    {"name": "TCKC", "wave": "p..p..p..p.."},
+    {"name": "TMSC", "wave": "x3.4.z.3.4.z.", "data": ["nTDI", "TMS", "TDO", "nTDI", "TMS", "TDO"]},
+    {"name": "TMSC_OEN", "wave": "1.....0.....0"},
+    {},
+    {"name": "TCK", "wave": "0.....1.0...1.0."},
+    {"name": "TMS", "wave": "x.3..........", "data": ["TMS"]},
+    {"name": "TDI", "wave": "x3...........", "data": ["TDI"]},
+    {"name": "TDO", "wave": "x.....4......", "data": ["TDO"]},
+    {},
+    {"name": "Bit", "wave": "x2.3.4.2.3.4.", "data": ["0", "1", "2", "0", "1", "2"]}
+  ],
+  "config": {"hscale": 3},
+  "head": {"text": "OScan1 3-Bit Packets (nTDI = ~TDI)"}
+}
+```
+
+[View Waveform](https://wavedrom.com/editor.html?signal=%5B%7Bname%3A%27TCKC%27%2Cwave%3A%27p..p..p..p..%27%7D%2C%7Bname%3A%27TMSC%27%2Cwave%3A%27x3.4.z.3.4.z.%27%2Cdata%3A%5B%27nTDI%27%2C%27TMS%27%2C%27TDO%27%2C%27nTDI%27%2C%27TMS%27%2C%27TDO%27%5D%7D%2C%7Bname%3A%27TMSC_OEN%27%2Cwave%3A%271.....0.....0%27%7D%2C%7B%7D%2C%7Bname%3A%27TCK%27%2Cwave%3A%270.....1.0...1.0.%27%7D%2C%7Bname%3A%27TMS%27%2Cwave%3A%27x.3..........%27%2Cdata%3A%5B%27TMS%27%5D%7D%2C%7Bname%3A%27TDI%27%2Cwave%3A%27x3...........%27%2Cdata%3A%5B%27TDI%27%5D%7D%2C%7Bname%3A%27TDO%27%2Cwave%3A%27x.....4......%27%2Cdata%3A%5B%27TDO%27%5D%7D%2C%7B%7D%2C%7Bname%3A%27Bit%27%2Cwave%3A%27x2.3.4.2.3.4.%27%2Cdata%3A%5B%270%27%2C%271%27%2C%272%27%2C%270%27%2C%271%27%2C%272%27%5D%7D%5D%2Cconfig%3A%7Bhscale%3A3%7D%2Chead%3A%7Btext%3A%27OScan1%203-Bit%20Packets%20(nTDI%20%3D%20~TDI)%27%7D)
+
 
 - **Bit 0**: nTDI (inverted TDI) - TMSC input
 - **Bit 1**: TMS - TMSC input
@@ -130,7 +177,21 @@ Each packet contains 3 bits transmitted over 3 TCKC cycles. TCK pulses on the 3r
 
 TCK pulses once every 3 TCKC cycles during OScan1 operation.
 
-<img src="https://svg.wavedrom.com/{signal:[{name:'TCKC',wave:'p.p.p.p.p.p.'},{name:'Bit',wave:'x2.....3....',data:['0','1','2','0','1','2']},{},...{name:'TCK',wave:'0.....1.0...1.0.'},{name:'Count',wave:'x2.3.4.2.3.4.',data:['1','2','3','1','2','3']}],config:{hscale:3},head:{text:'Clock Ratio: 3 TCKC = 1 JTAG Bit'}}"/>
+```wavedrom
+{
+  "signal": [
+    {"name": "TCKC", "wave": "p.p.p.p.p.p."},
+    {"name": "Bit", "wave": "x2.....3....", "data": ["0", "1", "2", "0", "1", "2"]},
+    {},
+    {"name": "TCK", "wave": "0.....1.0...1.0."},
+    {"name": "Count", "wave": "x2.3.4.2.3.4.", "data": ["1", "2", "3", "1", "2", "3"]}
+  ],
+  "config": {"hscale": 3},
+  "head": {"text": "Clock Ratio: 3 TCKC = 1 JTAG Bit"}
+}
+```
+
+[View Waveform](https://wavedrom.com/editor.html?signal=%5B%7Bname%3A%27TCKC%27%2Cwave%3A%27p.p.p.p.p.p.%27%7D%2C%7Bname%3A%27Bit%27%2Cwave%3A%27x2.....3....%27%2Cdata%3A%5B%270%27%2C%271%27%2C%272%27%2C%270%27%2C%271%27%2C%272%27%5D%7D%2C%7B%7D%2C%7Bname%3A%27TCK%27%2Cwave%3A%270.....1.0...1.0.%27%7D%2C%7Bname%3A%27Count%27%2Cwave%3A%27x2.3.4.2.3.4.%27%2Cdata%3A%5B%271%27%2C%272%27%2C%273%27%2C%271%27%2C%272%27%2C%273%27%5D%7D%5D%2Cconfig%3A%7Bhscale%3A3%7D%2Chead%3A%7Btext%3A%27Clock%20Ratio%3A%203%20TCKC%20%3D%201%20JTAG%20Bit%27%7D)
 
 **Ratio**: 3 TCKC cycles = 1 JTAG bit transfer (TCK pulse on 3rd cycle)
 
