@@ -1,0 +1,198 @@
+/*
+ * IEEE 1149.7 cJTAG OScan1 Protocol Implementation
+ * Based on OPENOCD_CJTAG_PATCH_GUIDE.md
+ */
+
+#include "config.h"
+#include <jtag/interface.h>
+#include <helper/bits.h>
+
+#define OSCAN1_OAC_LENGTH           16
+#define OSCAN1_CRC8_POLYNOMIAL      0x07
+
+#define JSCAN_OSCAN_ON              0x01
+#define JSCAN_OSCAN_OFF             0x00
+#define JSCAN_SELECT                0x02
+#define JSCAN_DESELECT              0x03
+#define JSCAN_SF_SELECT             0x04
+#define JSCAN_RESET                 0x0F
+
+#define SF0                         0
+#define SF1                         1
+#define SF2                         2
+#define SF3                         3
+
+static struct {
+	bool initialized;
+	bool oscan_enabled;
+	uint8_t scanning_format;
+	bool crc_enabled;
+	bool parity_enabled;
+	uint8_t device_id;
+} oscan1_state = {
+	.initialized = false,
+	.oscan_enabled = false,
+	.scanning_format = SF0,
+	.crc_enabled = false,
+	.parity_enabled = false,
+	.device_id = 0
+};
+
+extern int jtag_vpi_send_tckc_tmsc(uint8_t tckc, uint8_t tmsc);
+extern uint8_t jtag_vpi_receive_tmsc(void);
+
+static int oscan1_send_tckc_tmsc(uint8_t tckc, uint8_t tmsc);
+static uint8_t oscan1_receive_tmsc(void);
+
+int oscan1_send_oac(void)
+{
+	for (int i = 0; i < OSCAN1_OAC_LENGTH; i++) {
+		if (oscan1_send_tckc_tmsc(1, 1) != ERROR_OK)
+			return ERROR_FAIL;
+	}
+	return ERROR_OK;
+}
+
+int oscan1_send_jscan_cmd(uint8_t cmd)
+{
+	uint8_t packet = 0;
+	int bit_count = 0;
+
+	packet = (1 << 4) | (cmd & 0x0F);
+	bit_count = 5;
+
+	if (oscan1_state.parity_enabled) {
+		uint8_t parity = __builtin_popcount(packet) & 1;
+		packet = (packet << 1) | parity;
+		bit_count++;
+	}
+
+	for (int i = bit_count - 1; i >= 0; i--) {
+		uint8_t bit = (packet >> i) & 1;
+		if (oscan1_send_tckc_tmsc(1, bit) != ERROR_OK)
+			return ERROR_FAIL;
+	}
+
+	return ERROR_OK;
+}
+
+int oscan1_sf0_encode(uint8_t tms, uint8_t tdi, uint8_t *tdo)
+{
+	if (oscan1_send_tckc_tmsc(1, tms) != ERROR_OK)
+		return ERROR_FAIL;
+
+	if (oscan1_send_tckc_tmsc(0, tdi) != ERROR_OK)
+		return ERROR_FAIL;
+
+	*tdo = oscan1_receive_tmsc();
+
+	return ERROR_OK;
+}
+
+uint8_t oscan1_calc_crc8(const uint8_t *data, size_t len)
+{
+	/* Match RTL: initial CRC value is 0xFF (not 0x00) */
+	uint8_t crc = 0xFF;
+
+	for (size_t i = 0; i < len; i++) {
+		crc ^= data[i];
+		for (int bit = 0; bit < 8; bit++) {
+			if (crc & 0x80)
+				crc = (crc << 1) ^ OSCAN1_CRC8_POLYNOMIAL;
+			else
+				crc = crc << 1;
+		}
+	}
+
+	return crc;
+}
+
+int oscan1_init(void)
+{
+	if (oscan1_state.initialized)
+		return ERROR_OK;
+
+	LOG_INFO("Initializing OScan1 protocol...");
+
+	LOG_DEBUG("Sending OAC (Attention Character)...");
+	if (oscan1_send_oac() != ERROR_OK) {
+		LOG_ERROR("Failed to send OAC");
+		return ERROR_FAIL;
+	}
+
+	LOG_DEBUG("Sending JSCAN_OSCAN_ON command...");
+	if (oscan1_send_jscan_cmd(JSCAN_OSCAN_ON) != ERROR_OK) {
+		LOG_ERROR("Failed to enable OScan1");
+		return ERROR_FAIL;
+	}
+	oscan1_state.oscan_enabled = true;
+
+	LOG_DEBUG("Sending JSCAN_SELECT command...");
+	if (oscan1_send_jscan_cmd(JSCAN_SELECT) != ERROR_OK) {
+		LOG_ERROR("Failed to select device");
+		return ERROR_FAIL;
+	}
+
+	LOG_DEBUG("Selecting Scanning Format 0...");
+	if (oscan1_send_jscan_cmd(JSCAN_SF_SELECT) != ERROR_OK) {
+		LOG_ERROR("Failed to select scanning format");
+		return ERROR_FAIL;
+	}
+	oscan1_state.scanning_format = SF0;
+
+	oscan1_state.initialized = true;
+	LOG_INFO("OScan1 protocol initialized successfully");
+
+	return ERROR_OK;
+}
+
+int oscan1_reset(void)
+{
+	LOG_DEBUG("Resetting OScan1 state");
+
+	if (oscan1_state.oscan_enabled) {
+		oscan1_send_jscan_cmd(JSCAN_RESET);
+		oscan1_send_jscan_cmd(JSCAN_OSCAN_OFF);
+	}
+
+	oscan1_state.initialized = false;
+	oscan1_state.oscan_enabled = false;
+	oscan1_state.scanning_format = SF0;
+
+	return ERROR_OK;
+}
+
+int oscan1_set_scanning_format(uint8_t format)
+{
+	if (format > SF3) {
+		LOG_ERROR("Invalid scanning format: %d", format);
+		return ERROR_FAIL;
+	}
+
+	oscan1_state.scanning_format = format;
+	LOG_DEBUG("Scanning format set to SF%d", format);
+
+	return ERROR_OK;
+}
+
+void oscan1_enable_crc(bool enable)
+{
+	oscan1_state.crc_enabled = enable;
+	LOG_DEBUG("CRC-8 checking %s", enable ? "enabled" : "disabled");
+}
+
+void oscan1_enable_parity(bool enable)
+{
+	oscan1_state.parity_enabled = enable;
+	LOG_DEBUG("Parity checking %s", enable ? "enabled" : "disabled");
+}
+
+static int oscan1_send_tckc_tmsc(uint8_t tckc, uint8_t tmsc)
+{
+	return jtag_vpi_send_tckc_tmsc(tckc, tmsc);
+}
+
+static uint8_t oscan1_receive_tmsc(void)
+{
+	return jtag_vpi_receive_tmsc();
+}

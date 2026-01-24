@@ -1,0 +1,21 @@
+/*
+ * IEEE 1149.7 cJTAG OScan1 Protocol Header
+ */
+
+#ifndef OPENOCD_JTAG_DRIVERS_OSCAN1_H
+#define OPENOCD_JTAG_DRIVERS_OSCAN1_H
+
+#include <stdint.h>
+#include <stdbool.h>
+
+int oscan1_init(void);
+int oscan1_reset(void);
+int oscan1_send_oac(void);
+int oscan1_send_jscan_cmd(uint8_t cmd);
+int oscan1_sf0_encode(uint8_t tms, uint8_t tdi, uint8_t *tdo);
+int oscan1_set_scanning_format(uint8_t format);
+void oscan1_enable_crc(bool enable);
+void oscan1_enable_parity(bool enable);
+uint8_t oscan1_calc_crc8(const uint8_t *data, size_t len);
+
+#endif /* OPENOCD_JTAG_DRIVERS_OSCAN1_H */

@@ -1,0 +1,39 @@
+# Build directories
+build/
+obj_dir/
+
+# Verilator generated files
+*.d
+*.o
+*.a
+*.so
+*.exe
+V*
+
+# Waveform files
+*.vcd
+*.fst
+*.ghw
+*.lxt
+*.lxt2
+*.vpd
+*.shm
+*.trn
+
+# Log files
+*.log
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Compiled binaries
+*.out
+a.out
