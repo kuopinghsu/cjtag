@@ -2479,10 +2479,11 @@ TEST_CASE(tap_ir_capture_value) {
     tb.send_oac_sequence();
     for (int i = 0; i < 50; i++) tb.tick();
 
-    // Navigate to CAPTURE-IR
-    tb.send_oscan1_packet(0, 0, nullptr);
-    tb.send_oscan1_packet(0, 1, nullptr);
-    tb.send_oscan1_packet(0, 0, nullptr);
+    // Navigate to CAPTURE-IR: RUN-TEST-IDLE → SELECT-DR → SELECT-IR → CAPTURE-IR
+    tb.send_oscan1_packet(0, 0, nullptr);  // RUN-TEST-IDLE
+    tb.send_oscan1_packet(0, 1, nullptr);  // SELECT-DR (TMS=1)
+    tb.send_oscan1_packet(0, 1, nullptr);  // SELECT-IR (TMS=1)
+    tb.send_oscan1_packet(0, 0, nullptr);  // CAPTURE-IR (TMS=0)
 
     // Enter SHIFT-IR and read captured value (5-bit IR)
     int capture_bits[5];
