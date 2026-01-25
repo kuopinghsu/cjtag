@@ -23,7 +23,6 @@ The cJTAG bridge implements IEEE 1149.7 (Compact JTAG) Class T4, converting a 2-
 │                                                          │          │
 └──────────────────────────────────────────────────────────┼──────────┘
                                                            │
-                                                           ▼
             ┌─────────────────────────────────────────────────────────┐
             │         Verilator Simulation (top.sv)                   │
             │                                                         │
@@ -42,7 +41,6 @@ The cJTAG bridge implements IEEE 1149.7 (Compact JTAG) Class T4, converting a 2-
             │  │  │TCKC │  │TMSC │  (bidirectional)               │   │
             │  │  └──┬──┘  └──┬──┘                                │   │
             │  │     │        │                                   │   │
-            │  │     ▼        ▼                                   │   │
             │  │  ┌──────────────────────┐                        │   │
             │  │  │  OScan1 Protocol     │                        │   │
             │  │  │  ┌────┬────┬────┐    │                        │   │
@@ -50,14 +48,12 @@ The cJTAG bridge implements IEEE 1149.7 (Compact JTAG) Class T4, converting a 2-
             │  │  │  └────┴────┴────┘    │                        │   │
             │  │  └──────────────────────┘                        │   │
             │  │     │        │        │                          │   │
-            │  │     ▼        ▼        ▼                          │   │
             │  │  ┌──────────────────────┐                        │   │
             │  │  │  4-Wire JTAG Output  │                        │   │
             │  │  │  TCK, TMS, TDI, TDO  │                        │   │
             │  │  └──────────┬───────────┘                        │   │
             │  └─────────────┼────────────────────────────────────┘   │
             │                │                                        │
-            │                ▼                                        │
             │  ┌──────────────────────────────────────────────────┐   │
             │  │        jtag_tap.sv (Test Target)                 │   │
             │  │  ┌────────────────────────────────────────────┐  │   │
@@ -93,25 +89,21 @@ The cJTAG bridge uses a **system clock-based architecture** to enable proper esc
 │    (2-FF)       │  - tckc_i → tckc_sync[1:0] → tckc_s
 └────────┬────────┘  - tmsc_i → tmsc_sync[1:0] → tmsc_s
          │
-         ▼
 ┌─────────────────┐
 │  Edge Detectors │  Detect transitions
 │                 │  - tckc_posedge, tckc_negedge
 └────────┬────────┘  - tmsc_edge
          │
-         ▼
 ┌─────────────────┐
 │ Escape Detector │  Monitors TCKC high + TMSC toggles
 │                 │  - Counts tmsc_toggle_count
 └────────┬────────┘  - Evaluates on tckc_negedge
          │
-         ▼
 ┌─────────────────┐
 │  State Machine  │  Processes protocol states
 │                 │  - OFFLINE, ONLINE_ACT, OSCAN1
 └────────┬────────┘  - React to escape sequences
          │
-         ▼
 ┌─────────────────┐
 │ Output Logic    │  Generates JTAG signals
 │                 │  - tck_o, tms_o, tdi_o
@@ -143,11 +135,11 @@ The cJTAG bridge uses a **system clock-based architecture** to enable proper esc
    // When TCKC goes high
    - Set tckc_is_high flag
    - Reset tmsc_toggle_count
-   
+
    // While TCKC stays high (MIN_ESC_CYCLES = 20)
    - Count TMSC edges
    - Increment tckc_high_cycles
-   
+
    // When TCKC goes low (if tckc_high_cycles >= MIN_ESC_CYCLES)
    - Evaluate tmsc_toggle_count:
      * 6-7:  Selection (activate → ONLINE_ACT)
@@ -388,8 +380,8 @@ TCK pulses once every 3 TCKC cycles during OScan1 operation. TCK goes high on TC
                             │ Invalid → OFFLINE
                             ▼
                      ┌─────────────┐
-           ┌────────►│   OSCAN1    │◄──────┐
-           │         └──────┬──────┘       │
+           ┌────────►│   OSCAN1    │◄───────┐
+           │         └──────┬──────┘        │
            │                │               │
            │                │ 8+ toggles    │ 3-bit
            │                │ OR nTRST      │ packets
@@ -440,7 +432,6 @@ When viewing FST waveforms (`cjtag.fst` or `test_trace.fst`):
 ```
 User Command: make WAVE=1
          │
-         ▼
     ┌─────────┐
     │Makefile │
     └────┬────┘
@@ -450,29 +441,26 @@ User Command: make WAVE=1
     │ Verilator Compiler  │
     └────┬────────────┬───┘
          │            │
-         ▼            ▼
     ┌────────┐   ┌────────┐
     │ RTL SV │   │C++ TB  │
     └────┬───┘   └───┬────┘
          │           │
          └─────┬─────┘
                ▼
-         ┌──────────┐
-         │ Vtop.exe │
-         └────┬─────┘
-              │ WAVE=1
-              ▼
-         ┌──────────┐
-         │ VPI Port │  :3333
-         │  Server  │◄───── OpenOCD
-         └────┬─────┘
-              │
-              ▼
-         ┌──────────┐
-         │cjtag.fst │ ──► GTKWave
-         └──────────┘
+         ┌───────────┐
+         │ Vtop.exe  │
+         └─────┬─────┘
+               │ WAVE=1
+               ▼
+         ┌───────────┐
+         │ VPI Port  │  :3333
+         │  Server   │◄───── OpenOCD
+         └─────┬─────┘
+               │
+         ┌───────────┐
+         │ cjtag.fst │ ──► GTKWave
+         └───────────┘
 ```
-
 
 **Use this diagram to understand how all components work together!**
 
@@ -487,19 +475,19 @@ module cjtag_bridge (
     // System Clock
     input  logic        clk_i,          // 100 MHz system clock
     input  logic        ntrst_i,        // Reset (active low)
-    
+
     // cJTAG Interface (2-wire, async inputs)
     input  logic        tckc_i,         // cJTAG clock from probe
     input  logic        tmsc_i,         // cJTAG data/control in
     output logic        tmsc_o,         // cJTAG data out
     output logic        tmsc_oen,       // Output enable (0=output, 1=input)
-    
+
     // JTAG Interface (4-wire, generated outputs)
     output logic        tck_o,          // JTAG clock to TAP
     output logic        tms_o,          // JTAG TMS to TAP
     output logic        tdi_o,          // JTAG TDI to TAP
     input  logic        tdo_i,          // JTAG TDO from TAP
-    
+
     // Status
     output logic        online_o,       // 1=OSCAN1 active, 0=offline
     output logic        nsp_o           // Standard Protocol indicator
@@ -563,11 +551,11 @@ always_ff @(posedge clk_i or negedge ntrst_i) begin
     end else begin
         tckc_prev <= tckc_s;
         tmsc_prev <= tmsc_s;
-        
+
         // Detect TCKC edges
         tckc_posedge <= (!tckc_prev && tckc_s);
         tckc_negedge <= (tckc_prev && !tckc_s);
-        
+
         // Detect TMSC edge
         tmsc_edge <= (tmsc_prev != tmsc_s);
     end
@@ -590,7 +578,7 @@ always_ff @(posedge clk_i or negedge ntrst_i) begin
             tckc_is_high <= 1'b1;
             tckc_high_cycles <= 4'd1;
             tmsc_toggle_count <= 5'd0;
-        end 
+        end
         // Track TCKC going low
         else if (tckc_negedge) begin
             tckc_is_high <= 1'b0;
@@ -601,7 +589,7 @@ always_ff @(posedge clk_i or negedge ntrst_i) begin
             if (tckc_high_cycles < 4'd15) begin
                 tckc_high_cycles <= tckc_high_cycles + 4'd1;
             end
-            
+
             if (tmsc_edge) begin
                 tmsc_toggle_count <= tmsc_toggle_count + 5'd1;
             end
@@ -625,12 +613,12 @@ always_ff @(posedge clk_i or negedge ntrst_i) begin
                 end
             end
         end
-        
+
         ST_ONLINE_ACT: begin
             // Receive 12-bit OAC on TCKC edges
             if (tckc_negedge) begin
                 oac_shift <= {tmsc_s, oac_shift[10:1]};
-                
+
                 if (oac_count == 4'd11) begin
                     if ({tmsc_s, oac_shift[10:0]} == 12'b0000_1000_1100) begin
                         state <= ST_OSCAN1;
@@ -640,7 +628,7 @@ always_ff @(posedge clk_i or negedge ntrst_i) begin
                 end
             end
         end
-        
+
         ST_OSCAN1: begin
             // Check for reset escape (8+ toggles)
             if (tckc_negedge && tckc_high_cycles >= MIN_ESC_CYCLES[3:0]) begin
@@ -672,7 +660,7 @@ always_ff @(posedge clk_i or negedge ntrst_i) begin
                         tdi_int <= ~tmsc_sampled;  // Inverted TDI
                         tmsc_oen_int <= 1'b1;      // Input for TMS
                     end
-                    
+
                     2'd2: begin
                         tms_int <= tmsc_sampled;   // TMS
                         tck_int <= 1'b1;           // TCK pulse
@@ -680,12 +668,12 @@ always_ff @(posedge clk_i or negedge ntrst_i) begin
                     end
                 endcase
             end
-            
+
             if (tckc_negedge && bit_pos == 2'd2) begin
                 tck_int <= 1'b0;  // End TCK pulse
             end
         end
-        
+
         default: begin
             tck_int <= 1'b0;
             tms_int <= 1'b1;
@@ -857,7 +845,6 @@ Key signals to observe in `cjtag.fst` or `test_trace.fst`:
 ```
 User: make WAVE=1
          │
-         ▼
     ┌─────────┐
     │Makefile │
     └────┬────┘
@@ -867,21 +854,20 @@ User: make WAVE=1
     │ Verilator Compiler  │
     └────┬────────────┬───┘
          │            │
-         ▼            ▼
     ┌────────┐   ┌────────┐
     │ RTL SV │   │C++ TB  │
     └────┬───┘   └───┬────┘
          │           │
          └─────┬─────┘
                ▼
-         ┌──────────┐
-         │ Vtop.exe │
-         └────┬─────┘
-              │ ./Vtop +trace
-              ▼
-         ┌──────────┐
-         │cjtag.fst │ ──► GTKWave
-         └──────────┘
+         ┌───────────┐
+         │ Vtop.exe  │
+         └─────┬─────┘
+               │ ./Vtop +trace
+               ▼
+         ┌───────────┐
+         │ cjtag.fst │ ──► GTKWave
+         └───────────┘
 ```
 
 ---
@@ -1016,6 +1002,6 @@ At TCKC = 10 MHz:
 
 ---
 
-**Last Updated**: January 2026  
-**Architecture Version**: 2.0 (System Clock Based)  
+**Last Updated**: January 2026
+**Architecture Version**: 2.0 (System Clock Based)
 **Status**: ✅ Production - All tests passing

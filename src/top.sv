@@ -2,9 +2,11 @@
 // Top-Level Testbench for cJTAG Bridge
 // =============================================================================
 // Connects cJTAG bridge to JTAG TAP and provides VPI interface
+// Uses 100MHz system clock for cJTAG protocol detection
 // =============================================================================
 
 module top (
+    input  logic        clk_i,          // System clock (100MHz)
     input  logic        ntrst_i,
     input  logic        tckc_i,
     input  logic        tmsc_i,
@@ -23,6 +25,7 @@ module top (
     // cJTAG Bridge Instance
     // ==========================================================================
     cjtag_bridge u_cjtag_bridge (
+        .clk_i      (clk_i),
         .ntrst_i    (ntrst_i),
         .tckc_i     (tckc_i),
         .tmsc_i     (tmsc_i),

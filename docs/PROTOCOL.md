@@ -90,12 +90,12 @@ The cJTAG adapter operates in three primary states:
    - Default state after reset or nTRST assertion
    - TCKC and TMSC activity has no effect on internal JTAG
    - Provides electrical isolation
-   
+
 2. **ONLINE** (Active state)
    - Adapter actively translates 2-wire protocol to 4-wire JTAG
    - Oscan1 protocol in effect
    - Normal debug operations
-   
+
 3. **TRANSITIONAL** (Handshake states)
    - States during activation/deactivation sequences
    - Processing escape sequences
@@ -172,7 +172,6 @@ SP = Scan Packet (3 TCKC cycles = 1 JTAG bit)
 
 Escape sequences are executed by **holding TCKC high** and **toggling TMSC** a specific number of times.
 
-
 | TMSC Toggles | Function | Description |
 |--------------|----------|-------------|
 | 4-5 | **Deselection** | Initiates deselection of current online technique |
@@ -241,10 +240,10 @@ IEEE 1149.7 is supported by major debug tool vendors:
 - **Lauterbach** (IDC20A and similar)
   - Voltage range: 0.4V to 5.0V
   - Full cJTAG Class T4 support
-  
+
 - **Segger** J-Link series
   - Software-configurable 2-wire mode
-  
+
 - **OpenOCD** (with cJTAG patches)
   - Open-source debug solution
   - See `openocd/` directory for configuration

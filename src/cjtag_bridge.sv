@@ -4,14 +4,17 @@
 // Converts 2-pin cJTAG (TCKC/TMSC) to 4-pin JTAG (TCK/TMS/TDI/TDO)
 // Implements OScan1 format with TAP.7 star-2 scan topology
 //
-// DESIGN LIMITATIONS:
-// - OSCAN1 -> OFFLINE transition NOT supported via escape sequences
-// - Use hardware reset (ntrst_i) to return from OSCAN1 to OFFLINE
-// - Reason: Bidirectional TMSC conflicts with escape sequence detection
-//           during packet bit 2 (TDO readback phase)
+// ARCHITECTURE:
+// - Uses system clock (100MHz) to sample async cJTAG inputs
+// - Detects TCKC edges and TMSC transitions
+// - Implements escape sequence detection per IEEE 1149.7:
+//   * 4-5 TMSC toggles (TCKC high): Deselection
+//   * 6-7 TMSC toggles (TCKC high): Selection (activation)
+//   * 8+ TMSC toggles (TCKC high): Reset to OFFLINE
 // =============================================================================
 
 module cjtag_bridge (
+    input  logic        clk_i,          // System clock (e.g., 100MHz)
     input  logic        ntrst_i,        // Optional reset (active low)
 
     // cJTAG Interface (2-wire)
@@ -44,16 +47,31 @@ module cjtag_bridge (
     state_t state;
 
     // =========================================================================
-    // Registers
+    // Input Synchronizers (2-stage for metastability)
     // =========================================================================
-    logic [4:0]  edge_count;            // TMSC edge counter for escape detection
+    logic [1:0]  tckc_sync;
+    logic [1:0]  tmsc_sync;
+
+    // Synchronized and edge-detected signals
+    logic        tckc_s;                // Synchronized TCKC
+    logic        tmsc_s;                // Synchronized TMSC
+    logic        tckc_prev;             // Previous TCKC for edge detection
+    logic        tmsc_prev;             // Previous TMSC for edge detection
+    logic        tckc_posedge;          // TCKC positive edge detected
+    logic        tckc_negedge;          // TCKC negative edge detected
+    logic        tmsc_edge;             // TMSC edge detected
+
+    // =========================================================================
+    // State Machine and Control Registers
+    // =========================================================================
+    logic [4:0]  tmsc_toggle_count;     // TMSC toggle counter for escape sequences
+    logic        tckc_is_high;          // TCKC currently held high
+    logic [4:0]  tckc_high_cycles;      // Counter for TCKC high duration
+
     logic [10:0] oac_shift;             // Online Activation Code shift register (11 bits)
     logic [3:0]  oac_count;             // Bit counter for OAC reception
     logic [1:0]  bit_pos;               // Position in 3-bit OScan1 packet
-    logic        tmsc_prev;             // Previous TMSC for edge detection
-    logic        tckc_high_hold;        // TCKC held high indicator
-    logic        tmsc_changed;          // TMSC changed on last posedge (escape continues)
-    logic        reset_escape;          // Signal from negedge to posedge to reset escape tracking
+    logic        tmsc_sampled;          // TMSC sampled on TCKC negedge
 
     // JTAG outputs (registered)
     logic        tck_int;
@@ -61,138 +79,219 @@ module cjtag_bridge (
     logic        tdi_int;
     logic        tmsc_oen_int;          // TMSC output enable (registered)
 
-    // OScan1 3-bit packet buffer (signals removed - not used in current implementation)
+    // =========================================================================
+    // Input Synchronizers - 2-stage for metastability protection
+    // =========================================================================
+    /* verilator lint_off SYNCASYNCNET */
+    always_ff @(posedge clk_i or negedge ntrst_i) begin
+        if (!ntrst_i) begin
+            tckc_sync <= 2'b00;
+            tmsc_sync <= 2'b00;
+        end else begin
+            tckc_sync <= {tckc_sync[0], tckc_i};
+            tmsc_sync <= {tmsc_sync[0], tmsc_i};
+        end
+    end
+    /* verilator lint_on SYNCASYNCNET */
+
+    assign tckc_s = tckc_sync[1];
+    assign tmsc_s = tmsc_sync[1];
 
     // =========================================================================
-    // Edge Detection for Escape Sequence
+    // Edge Detection Logic
     // =========================================================================
-    // During escape sequence: TCKC is held high, TMSC toggles
-    // We sample TMSC on negedge to count edges that occurred while TCKC was high
+    always_ff @(posedge clk_i or negedge ntrst_i) begin
+        if (!ntrst_i) begin
+            tckc_prev <= 1'b0;
+            tmsc_prev <= 1'b0;
+            tckc_posedge <= 1'b0;
+            tckc_negedge <= 1'b0;
+            tmsc_edge <= 1'b0;
+        end else begin
+            tckc_prev <= tckc_s;
+            tmsc_prev <= tmsc_s;
+
+            // Detect TCKC edges
+            tckc_posedge <= (!tckc_prev && tckc_s);
+            tckc_negedge <= (tckc_prev && !tckc_s);
+
+            // Detect TMSC edge (any transition)
+            tmsc_edge <= (tmsc_prev != tmsc_s);
+        end
+    end
 
     // =========================================================================
-    // Sampled input (captured on negedge)
+    // Escape Sequence Detection
     // =========================================================================
-    logic tmsc_sampled;
+    // Monitors: TCKC held high + TMSC toggling
+    // Counts TMSC edges while TCKC remains high
+    // Requires TCKC to be held high for at least MIN_ESC_CYCLES to be valid
+    // =========================================================================
+    localparam MIN_ESC_CYCLES = 20;  // Minimum system clock cycles TCKC must be high
+
+    always_ff @(posedge clk_i or negedge ntrst_i) begin
+        if (!ntrst_i) begin
+            tckc_is_high <= 1'b0;
+            tckc_high_cycles <= 5'd0;
+            tmsc_toggle_count <= 5'd0;
+        end else begin
+            // Track when TCKC goes high
+            if (tckc_posedge) begin
+                tckc_is_high <= 1'b1;
+                tckc_high_cycles <= 5'd1;
+                tmsc_toggle_count <= 5'd0;  // Reset counter on TCKC rising edge
+            end
+            // Track TCKC going low (escape sequence ends)
+            else if (tckc_negedge) begin
+                tckc_is_high <= 1'b0;
+                tckc_high_cycles <= 5'd0;
+            end
+            // TCKC is held high - monitor TMSC and count cycles
+            else if (tckc_is_high && tckc_s) begin
+                // Increment high duration counter (with saturation at 31)
+                if (tckc_high_cycles < 5'd31) begin
+                    tckc_high_cycles <= tckc_high_cycles + 5'd1;
+                end
+
+                // Count TMSC toggles while TCKC is high
+                if (tmsc_edge) begin
+                    tmsc_toggle_count <= tmsc_toggle_count + 5'd1;
+
+                    `ifdef VERBOSE
+                    $display("[%0t] Escape: TMSC toggle #%0d detected (TCKC high for %0d cycles)",
+                             $time, tmsc_toggle_count + 5'd1, tckc_high_cycles);
+                    `endif
+                end
+            end
+        end
+    end
 
     // =========================================================================
-    // Main State Machine - runs on FALLING edge of TCKC (samples inputs)
+    // Main State Machine - runs on system clock
     // =========================================================================
-    always_ff @(negedge tckc_i or negedge ntrst_i) begin
+    always_ff @(posedge clk_i or negedge ntrst_i) begin
         if (!ntrst_i) begin
             state           <= ST_OFFLINE;
             oac_shift       <= 11'd0;
             oac_count       <= 4'd0;
             bit_pos         <= 2'd0;
             tmsc_sampled    <= 1'b0;
-            reset_escape    <= 1'b0;
         end else begin
-            // Sample the input
-            tmsc_sampled    <= tmsc_i;
-
-            `ifdef VERBOSE
-            $display("[%0t] NEGEDGE: state=%0d, tmsc_i=%b", $time, state, tmsc_i);
-            `endif
-
             case (state)
                 // =============================================================
                 // OFFLINE: Wait for escape sequence
                 // =============================================================
                 ST_OFFLINE: begin
-                    `ifdef VERBOSE
-                    $display("[%0t] OFFLINE: tckc_high_hold=%b, edge_count=%d, tmsc_i=%b, tmsc_prev=%b",
-                             $time, tckc_high_hold, edge_count, tmsc_i, tmsc_prev);
-                    `endif
-
-                    // Check if we just ended an escape sequence (TMSC stopped toggling)
-                    if (tckc_high_hold && !tmsc_changed) begin
+                    // Check for escape sequence completion on TCKC falling edge
+                    // Require TCKC was held high long enough to be intentional
+                    if (tckc_negedge && tckc_high_cycles >= MIN_ESC_CYCLES) begin
                         `ifdef VERBOSE
-                        $display("[%0t] OFFLINE: Escape ended, edge_count=%d", $time, edge_count);
+                        $display("[%0t] OFFLINE: Escape sequence ended, toggles=%0d, cycles=%0d",
+                                 $time, tmsc_toggle_count, tckc_high_cycles);
                         `endif
 
-                        // Evaluate escape sequence
-                        if (edge_count >= 5'd3 && edge_count <= 5'd9) begin
-                            // Valid escape: 3-5 edges or 7-9 edges both go to ONLINE_ACT
+                        // Evaluate escape sequence based on toggle count
+                        if (tmsc_toggle_count >= 5'd6 && tmsc_toggle_count <= 5'd7) begin
+                            // Selection escape (6-7 toggles) - enter activation
                             state <= ST_ONLINE_ACT;
                             oac_shift <= 11'd0;
                             oac_count <= 4'd0;
 
                             `ifdef VERBOSE
-                            $display("[%0t] OFFLINE -> ONLINE_ACT (%d edges)", $time, edge_count);
+                            $display("[%0t] OFFLINE -> ONLINE_ACT (%0d toggles)",
+                                     $time, tmsc_toggle_count);
                             `endif
                         end
-                        // Note: tckc_high_hold and edge_count are reset in posedge block
+                        // 4-5 toggles (deselection) stays in OFFLINE
+                        // 8+ toggles (reset) stays in OFFLINE
                     end
                 end
 
                 // =============================================================
-                // ONLINE_ACT: Receive OAC + EC + CP (12 bits)
+                // ONLINE_ACT: Receive OAC + EC + CP (12 bits on TCKC edges)
                 // =============================================================
                 ST_ONLINE_ACT: begin
-                    oac_shift <= {tmsc_i, oac_shift[10:1]};
+                    // Sample TMSC on TCKC falling edge
+                    if (tckc_negedge) begin
+                        oac_shift <= {tmsc_s, oac_shift[10:1]};
 
-                    `ifdef VERBOSE
-                    $display("[%0t] ONLINE_ACT: bit %0d, tmsc_i=%b, oac_shift=%b",
-                             $time, oac_count, tmsc_i, oac_shift);
-                    `endif
-
-                    // After 12 bits, check the activation code
-                    if (oac_count == 4'd11) begin
                         `ifdef VERBOSE
-                        $display("[%0t] Checking OAC: received=%b, expected=%b",
-                                 $time, {tmsc_i, oac_shift[10:0]}, 12'b0000_1000_1100);
+                        $display("[%0t] ONLINE_ACT: bit %0d, tmsc_s=%b, oac_shift=%b",
+                                 $time, oac_count, tmsc_s, oac_shift);
                         `endif
 
-                        // Expected: OAC=1100 (LSB first), EC=1000, CP=0000
-                        // Combined: 0000_1000_1100 (MSB to LSB order in shift reg)
-                        if ({tmsc_i, oac_shift[10:0]} == 12'b0000_1000_1100) begin
-                            state <= ST_OSCAN1;
-                            bit_pos <= 2'd0;
-
+                        // After 12 bits, check the activation code
+                        if (oac_count == 4'd11) begin
                             `ifdef VERBOSE
-                            $display("[%0t] ONLINE_ACT -> OSCAN1, bit_pos=0", $time);
+                            $display("[%0t] Checking OAC: received=%b, expected=%b",
+                                     $time, {tmsc_s, oac_shift[10:0]}, 12'b0000_1000_1100);
                             `endif
+
+                            // Expected: OAC=1100 (LSB first), EC=1000, CP=0000
+                            // Combined: 0000_1000_1100 (MSB to LSB order in shift reg)
+                            if ({tmsc_s, oac_shift[10:0]} == 12'b0000_1000_1100) begin
+                                state <= ST_OSCAN1;
+                                bit_pos <= 2'd0;
+
+                                `ifdef VERBOSE
+                                $display("[%0t] ONLINE_ACT -> OSCAN1, bit_pos=0", $time);
+                                `endif
+                            end else begin
+                                // Invalid code, return offline
+                                state <= ST_OFFLINE;
+
+                                `ifdef VERBOSE
+                                $display("[%0t] ONLINE_ACT -> OFFLINE (invalid OAC)", $time);
+                                `endif
+                            end
+                            oac_count <= 4'd0;
                         end else begin
-                            // Invalid code, return offline
-                            state <= ST_OFFLINE;
+                            oac_count <= oac_count + 4'd1;
                         end
-                        oac_count <= 4'd0;
-                    end else begin
-                        oac_count <= oac_count + 4'd1;
                     end
                 end
 
                 // =============================================================
                 // OSCAN1: Active mode with 3-bit scan packets
                 // =============================================================
-                // LIMITATION: OSCAN1 -> OFFLINE transition requires hardware reset (ntrst_i)
-                // Escape sequences from OSCAN1 are not supported due to protocol complexity
-                // with bidirectional TMSC during packet bit 2 (TDO readback)
                 ST_OSCAN1: begin
-                    // No escape detection in OSCAN1 state
-                    // Only way out is hardware reset
-                    reset_escape <= 1'b0;
+                    // Check for escape sequence while in OSCAN1
+                    // Require TCKC was held high long enough to be intentional (not just normal clock pulse)
+                    if (tckc_negedge && tckc_high_cycles >= MIN_ESC_CYCLES) begin
+                        `ifdef VERBOSE
+                        $display("[%0t] OSCAN1: Escape sequence detected, toggles=%0d, cycles=%0d",
+                                 $time, tmsc_toggle_count, tckc_high_cycles);
+                        `endif
 
-                    // Always increment bit_pos for normal packet operation
-                    // (unless we just transitioned to OFFLINE above)
-                    if (state == ST_OSCAN1) begin
+                        // Check for reset escape (8+ toggles)
+                        if (tmsc_toggle_count >= 5'd8) begin
+                            state <= ST_OFFLINE;
+                            bit_pos <= 2'd0;
+
+                            `ifdef VERBOSE
+                            $display("[%0t] OSCAN1 -> OFFLINE (reset escape, %0d toggles)",
+                                     $time, tmsc_toggle_count);
+                            `endif
+                        end
+                        // Otherwise stay in OSCAN1 (ignore other escape types)
+                    end
+                    // Normal OSCAN1 operation - sample on TCKC falling edge
+                    else if (tckc_negedge) begin
+                        // Sample TMSC for current bit position
+                        tmsc_sampled <= tmsc_s;
+
+                        // Advance to next bit position
                         case (bit_pos)
-                            2'd0: begin
-                                // First bit: nTDI (inverted TDI)
-                                bit_pos <= 2'd1;
-                            end
-
-                            2'd1: begin
-                                // Second bit: TMS
-                                bit_pos <= 2'd2;
-                            end
-
-                            2'd2: begin
-                                // Third bit: TDO (from device)
-                                bit_pos <= 2'd0;
-                            end
-
+                            2'd0: bit_pos <= 2'd1;  // nTDI sampled
+                            2'd1: bit_pos <= 2'd2;  // TMS sampled
+                            2'd2: bit_pos <= 2'd0;  // TDO sampled (from device)
                             default: bit_pos <= 2'd0;
                         endcase
+
+                        `ifdef VERBOSE
+                        $display("[%0t] OSCAN1 negedge: bit_pos=%0d, tmsc_s=%b",
+                                 $time, bit_pos, tmsc_s);
+                        `endif
                     end
                 end
 
@@ -204,146 +303,80 @@ module cjtag_bridge (
     end
 
     // =========================================================================
-    // Escape sequence tracking and output updates - runs on RISING edge of TCKC
+    // Output Generation - runs on system clock, updates on TCKC edges
     // =========================================================================
-    always_ff @(posedge tckc_i or negedge ntrst_i) begin
+    always_ff @(posedge clk_i or negedge ntrst_i) begin
         if (!ntrst_i) begin
-            tck_int             <= 1'b0;
-            tms_int             <= 1'b1;
-            tdi_int             <= 1'b0;
-            tmsc_oen_int        <= 1'b1;           // Default to input mode
-            tckc_high_hold      <= 1'b0;
-            edge_count          <= 5'd0;
-            tmsc_prev           <= 1'b0;
-            tmsc_changed        <= 1'b0;
+            tck_int         <= 1'b0;
+            tms_int         <= 1'b1;
+            tdi_int         <= 1'b0;
+            tmsc_oen_int    <= 1'b1;  // Default to input mode
         end else begin
-            // Handle escape tracking and resets
-            if (reset_escape) begin
-                // Negedge requested reset after evaluating escape or normal cycle
-                `ifdef VERBOSE
-                $display("[%0t] POSEDGE: Reset escape tracking (reset_escape=1)", $time);
-                `endif
-
-                tckc_high_hold  <= 1'b0;
-                edge_count      <= 5'd0;
-                tmsc_changed    <= 1'b0;
-                // After reset, will restart tracking below if in OFFLINE/OSCAN1
-            end
-
-            if (tckc_high_hold && state == ST_ONLINE_ACT) begin
-                // Transitioned to ONLINE_ACT, reset tracking
-                `ifdef VERBOSE
-                $display("[%0t] POSEDGE: Reset escape tracking (entered ONLINE_ACT)", $time);
-                `endif
-
-                tckc_high_hold  <= 1'b0;
-                edge_count      <= 5'd0;
-                tmsc_changed    <= 1'b0;
-            end
-
-            // Escape tracking for OFFLINE/OSCAN1 states
-            // This runs after any resets above, so tckc_high_hold reflects the reset state
-            if ((state == ST_OFFLINE || state == ST_OSCAN1) && !tckc_high_hold) begin
-                // Start fresh tracking (first posedge after reset or initial)
-                `ifdef VERBOSE
-                $display("[%0t] POSEDGE: Start escape tracking, tmsc_i=%b", $time, tmsc_i);
-                `endif
-
-                tckc_high_hold  <= 1'b1;
-                edge_count      <= 5'd0;
-                tmsc_prev       <= tmsc_i;
-                tmsc_changed    <= 1'b0;
-            end else if ((state == ST_OFFLINE || state == ST_OSCAN1) && tckc_high_hold) begin
-                // Continue tracking (subsequent posedge, tckc_high_hold still set)
-                `ifdef VERBOSE
-                $display("[%0t] POSEDGE: Continue tracking, tmsc_i=%b, tmsc_prev=%b",
-                         $time, tmsc_i, tmsc_prev);
-                `endif
-
-                tckc_high_hold <= 1'b1;  // Keep it set
-                if (tmsc_i != tmsc_prev) begin
-                    // TMSC changed - count edge
-                    edge_count <= edge_count + 5'd1;
-                    tmsc_changed <= 1'b1;
-
-                    `ifdef VERBOSE
-                    $display("[%0t] POSEDGE: TMSC edge! count=%d->%d, tmsc=%b->%b",
-                             $time, edge_count, edge_count + 5'd1, tmsc_prev, tmsc_i);
-                    `endif
-                end else begin
-                    // TMSC didn't change this cycle
-                    tmsc_changed <= 1'b0;
-                end
-                tmsc_prev <= tmsc_i;
-            end
-
-            // Update outputs based on state (outputs change on rising edge)
             case (state)
-                ST_OFFLINE: begin
+                ST_OFFLINE, ST_ONLINE_ACT: begin
+                    // Keep JTAG interface idle
                     tck_int <= 1'b0;
                     tms_int <= 1'b1;
                     tdi_int <= 1'b0;
-                    tmsc_oen_int <= 1'b1;       // Input mode
-                end
-
-                ST_ONLINE_ACT: begin
-                    tck_int <= 1'b0;
-                    tms_int <= 1'b1;
-                    tdi_int <= 1'b0;
-                    tmsc_oen_int <= 1'b1;       // Input mode
+                    tmsc_oen_int <= 1'b1;  // Input mode
                 end
 
                 ST_OSCAN1: begin
-                    `ifdef VERBOSE
-                    $display("[%0t] POSEDGE: OSCAN1 case, bit_pos=%d", $time, bit_pos);
-                    `endif
+                    // Update outputs based on TCKC edges and bit position
 
-                    // Update outputs based on bit position
-                    // Note: bit_pos was incremented on the previous negedge
-                    case (bit_pos)
-                        2'd0: begin
-                            // After TDO sampled on negedge, lower TCK on this posedge
-                            tck_int <= 1'b0;
-                            tmsc_oen_int <= 1'b1;   // Back to input mode for nTDI
-                        end
+                    // On TCKC rising edge - generate TCK pulse and drive TDO
+                    if (tckc_posedge) begin
+                        case (bit_pos)
+                            2'd0: begin
+                                // Start of new packet - TCK low, prepare for nTDI
+                                tck_int <= 1'b0;
+                                tmsc_oen_int <= 1'b1;  // Input mode for nTDI
+                            end
 
-                        2'd1: begin
-                            // After nTDI sampled on negedge, update TDI on this posedge
-                            tdi_int <= ~tmsc_sampled;
-                            tmsc_oen_int <= 1'b1;   // Input mode for TMS
+                            2'd1: begin
+                                // After nTDI sampled - update TDI, prepare for TMS
+                                tdi_int <= ~tmsc_sampled;
+                                tmsc_oen_int <= 1'b1;  // Input mode for TMS
 
-                            `ifdef VERBOSE
-                            $display("[%0t] OSCAN1 posedge: bit_pos=1, tmsc_sampled=%b, tdi_int=%b",
-                                     $time, tmsc_sampled, ~tmsc_sampled);
-                            `endif
-                        end
+                                `ifdef VERBOSE
+                                $display("[%0t] OSCAN1 posedge: bit_pos=1, tdi_int=%b (inverted from %b)",
+                                         $time, ~tmsc_sampled, tmsc_sampled);
+                                `endif
+                            end
 
-                        2'd2: begin
-                            // After TMS sampled on negedge, update on this posedge
-                            tms_int <= tmsc_sampled;
-                            tck_int <= 1'b1;  // Generate TCK pulse
-                            tmsc_oen_int <= 1'b0;   // Output mode for TDO
+                            2'd2: begin
+                                // After TMS sampled - generate TCK pulse, drive TDO
+                                tms_int <= tmsc_sampled;
+                                tck_int <= 1'b1;       // Generate TCK pulse
+                                tmsc_oen_int <= 1'b0;  // Output mode for TDO
 
-                            `ifdef VERBOSE
-                            $display("[%0t] OSCAN1 posedge: bit_pos=2, TCK pulse, tdo_i=%b",
-                                     $time, tdo_i);
-                            `endif
-                        end
+                                `ifdef VERBOSE
+                                $display("[%0t] OSCAN1 posedge: bit_pos=2, TCK high, tms_int=%b, driving TDO=%b",
+                                         $time, tmsc_sampled, tdo_i);
+                                `endif
+                            end
 
-                        default: begin
-                            // Keep current values for any other bit_pos
-                            tck_int <= tck_int;
-                            tms_int <= tms_int;
-                            tdi_int <= tdi_int;
-                            tmsc_oen_int <= 1'b1;   // Default to input mode
-                        end
-                    endcase
+                            default: begin
+                                tmsc_oen_int <= 1'b1;  // Default to input
+                            end
+                        endcase
+                    end
+
+                    // On TCKC falling edge - lower TCK
+                    if (tckc_negedge && bit_pos == 2'd2) begin
+                        tck_int <= 1'b0;  // End TCK pulse
+
+                        `ifdef VERBOSE
+                        $display("[%0t] OSCAN1 negedge: bit_pos=2, TCK low", $time);
+                        `endif
+                    end
                 end
 
                 default: begin
                     tck_int <= 1'b0;
                     tms_int <= 1'b1;
                     tdi_int <= 1'b0;
+                    tmsc_oen_int <= 1'b1;
                 end
             endcase
         end

@@ -60,6 +60,7 @@ int main(int argc, char** argv) {
     jtag_vpi_init(vpi_port);
 
     // Initial reset
+    top->clk_i = 0;
     top->ntrst_i = 0;
     top->tckc_i = 0;
     top->tmsc_i = 1;
@@ -67,6 +68,7 @@ int main(int argc, char** argv) {
     printf("=================================================\n");
     printf("cJTAG Bridge Simulation with Verilator\n");
     printf("=================================================\n");
+    printf("System Clock:    100 MHz\n");
     printf("VPI Port:        %d\n", vpi_port);
     printf("Waveform:        %s\n", trace_enabled ? "Enabled (cjtag.fst)" : "Disabled");
     printf("=================================================\n");
@@ -83,8 +85,12 @@ int main(int argc, char** argv) {
     while (main_time < reset_cycles && !g_shutdown) {
         top->ntrst_i = (main_time > 10) ? 1 : 0;
 
-        // Generate clock
-        top->tckc_i = (main_time % 2) == 0 ? 0 : 1;
+        // Generate system clock (100 MHz = 10ns period, 5ns half-period)
+        // In simulation, we use arbitrary time units, so just toggle each cycle
+        top->clk_i = (main_time % 2) == 0 ? 0 : 1;
+
+        // TCKC not driven during reset (will come from VPI)
+        top->tckc_i = 0;
 
         // Evaluate model
         top->eval();
@@ -104,7 +110,10 @@ int main(int argc, char** argv) {
     const vluint64_t idle_interval = 1000;  // Cycles between VPI checks when idle
 
     while (!g_shutdown && !Verilated::gotFinish()) {
-        // Process VPI commands
+        // Generate system clock (continues running throughout simulation)
+        top->clk_i = (main_time % 2) == 0 ? 0 : 1;
+
+        // Process VPI commands (VPI controls tckc_i and tmsc_i)
         if (!jtag_vpi_tick(top)) {
             printf("VPI requested simulation stop\n");
             break;
