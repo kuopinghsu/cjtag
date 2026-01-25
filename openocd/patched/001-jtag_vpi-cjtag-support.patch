@@ -11,7 +11,7 @@ index 5216e5d77..e4bd89774 100644
  if VDEBUG
  DRIVERFILES += %D%/vdebug.c
 diff --git a/src/jtag/drivers/jtag_vpi.c b/src/jtag/drivers/jtag_vpi.c
-index fac27b306..248e0f86f 100644
+index fac27b306..48127619a 100644
 --- a/src/jtag/drivers/jtag_vpi.c
 +++ b/src/jtag/drivers/jtag_vpi.c
 @@ -23,6 +23,7 @@
@@ -26,7 +26,7 @@ index fac27b306..248e0f86f 100644
  #define CMD_SCAN_CHAIN		2
  #define CMD_SCAN_CHAIN_FLIP_TMS	3
  #define CMD_STOP_SIMU		4
-+#define CMD_OSCAN1		5
++#define CMD_OSCAN1_RAW		5
  
  /* jtag_vpi server port and address to connect to */
  static int server_port = DEFAULT_SERVER_PORT;
@@ -44,8 +44,8 @@ index fac27b306..248e0f86f 100644
  		return "CMD_SCAN_CHAIN_FLIP_TMS";
  	case CMD_STOP_SIMU:
  		return "CMD_STOP_SIMU";
-+	case CMD_OSCAN1:
-+		return "CMD_OSCAN1";
++	case CMD_OSCAN1_RAW:
++		return "CMD_OSCAN1_RAW";
  	default:
  		return "<unknown>";
  	}
@@ -163,7 +163,7 @@ index fac27b306..248e0f86f 100644
  	COMMAND_REGISTRATION_DONE
  };
  
-@@ -664,6 +750,91 @@ static struct jtag_interface jtag_vpi_interface = {
+@@ -664,6 +750,93 @@ static struct jtag_interface jtag_vpi_interface = {
  	.execute_queue = jtag_vpi_execute_queue,
  };
  
@@ -178,7 +178,9 @@ index fac27b306..248e0f86f 100644
 +
 +	memset(&vpi, 0, sizeof(struct vpi_cmd));
 +
-+	vpi.cmd = CMD_OSCAN1;
++	/* Use CMD_OSCAN1_RAW to send raw TCKC/TMSC signals
++	 * Format: 1 byte with bit0=TCKC, bit1=TMSC */
++	vpi.cmd = CMD_OSCAN1_RAW;
 +	vpi.length = 1;
 +	vpi.nb_bits = 2;
 +	vpi.buffer_out[0] = (tckc & 0x01) | ((tmsc & 0x01) << 1);
@@ -186,7 +188,7 @@ index fac27b306..248e0f86f 100644
 +	retval = jtag_vpi_send_cmd(&vpi);
 +
 +	if (retval == ERROR_OK) {
-+		/* Store TDO bit from response */
++		/* Store TDO bit from TMSC response */
 +		last_oscan1_response = vpi.buffer_in[0] & 0x01;
 +	}
 +

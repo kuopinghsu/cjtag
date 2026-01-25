@@ -2,12 +2,12 @@
 
 ## Overview
 
-The cJTAG Bridge project includes a comprehensive automated test suite with **101 test cases** providing complete coverage of the IEEE 1149.7 cJTAG implementation. The test suite has grown from the initial 16 tests to 101 tests (a 531% increase), ensuring robust validation of all protocol aspects, edge cases, timing characteristics, and hardware compliance.
+The cJTAG Bridge project includes a comprehensive automated test suite with **105 test cases** providing complete coverage of the IEEE 1149.7 cJTAG implementation. The test suite has grown from the initial 16 tests to 105 tests (a 556% increase), ensuring robust validation of all protocol aspects, edge cases, timing characteristics, hardware compliance, and RISC-V debug module integration.
 
 **Test Statistics**:
-- **Total Tests**: 101 (all passing ✅)
-- **Test File Size**: 3,127 lines of code
-- **Coverage**: Protocol compliance, state machine, timing, error recovery, signal integrity, TAP operations, stress testing
+- **Total Tests**: 105 (all passing ✅)
+- **Test File Size**: 3,347 lines of code
+- **Coverage**: Protocol compliance, state machine, timing, error recovery, signal integrity, TAP operations, RISC-V debug, stress testing
 - **Execution Time**: ~5 seconds
 
 ## Test Suite Architecture
@@ -15,8 +15,8 @@ The cJTAG Bridge project includes a comprehensive automated test suite with **10
 ### Test Framework
 - **Location**: [tb/test_cjtag.cpp](../tb/test_cjtag.cpp)
 - **Framework**: Custom C++ test harness with Verilator
-- **Total Tests**: 101 comprehensive tests
-- **Coverage**: Full protocol, all states, edge cases, timing, signal integrity, TAP deep dive
+- **Total Tests**: 105 comprehensive tests
+- **Coverage**: Full protocol, all states, edge cases, timing, signal integrity, TAP deep dive, RISC-V debug module
 
 ### Test Harness Features
 ```cpp
@@ -35,7 +35,7 @@ class TestHarness {
 
 ## Test Suite Organization
 
-The 101 tests are organized into 10 comprehensive categories:
+The 105 tests are organized into 11 comprehensive categories:
 
 ### Category Breakdown
 1. **Basic Functionality** (16 tests) - Core protocol operations
@@ -48,6 +48,7 @@ The 101 tests are organized into 10 comprehensive categories:
 8. **TAP-Specific Scenarios** (8 tests) - Deep JTAG TAP testing
 9. **Multi-Cycle & Performance** (6 tests) - Sustained operations, stress testing
 10. **Protocol Compliance** (11 tests) - IEEE 1149.7 specification adherence
+11. **RISC-V Debug Module** (4 tests) - Debug module register access and IR scanning
 
 ## Complete Test List
 
@@ -195,7 +196,7 @@ The 101 tests are organized into 10 comprehensive categories:
 | 93 | `minimum_system_clock_ratio` | System clock adequacy verification |
 | 94 | `asymmetric_tckc_duty_cycle` | 10% vs 90% duty cycle tolerance |
 
-### 11. Data Patterns & Protocol Compliance (Tests 95-101)
+### 11. Data Patterns, Protocol Compliance & RISC-V Debug (Tests 95-105)
 
 | # | Test Name | Purpose |
 |---|-----------|---------|
@@ -206,6 +207,10 @@ The 101 tests are organized into 10 comprehensive categories:
 | 99 | `ieee1149_7_selection_sequence` | IEEE spec compliance (6-7 toggles) |
 | 100 | `oac_ec_cp_field_values` | OAC/EC/CP field validation |
 | 101 | `oscan1_format_compliance` | 3-bit packet format verification |
+| 102 | `dtmcs_register_read` | RISC-V DTMCS register access |
+| 103 | `dtmcs_register_format` | DTMCS register field validation |
+| 104 | `dmi_register_access` | RISC-V DMI register operations |
+| 105 | `debug_module_ir_scan` | IR scan with instruction readback |
 
 ## Running Tests
 
@@ -249,9 +254,13 @@ Running test: 03. escape_sequence_reset_8_edges ... PASS
 Running test: 99. ieee1149_7_selection_sequence ... PASS
 Running test: 100. oac_ec_cp_field_values ... PASS
 Running test: 101. oscan1_format_compliance ... PASS
+Running test: 102. dtmcs_register_read ... PASS
+Running test: 103. dtmcs_register_format ... PASS
+Running test: 104. dmi_register_access ... PASS
+Running test: 105. debug_module_ir_scan ... PASS
 
 ========================================
-Test Results: 101 tests passed
+Test Results: 105 tests passed
 ========================================
 ✅ ALL TESTS PASSED!
 ```
@@ -355,16 +364,17 @@ Test Results: 101 tests passed
 
 | Metric | Value |
 |--------|-------|
-| **Total Tests** | 101 |
+| **Total Tests** | 105 |
 | **Pass Rate** | 100% ✅ |
 | **Build Time** | ~5-10 seconds |
 | **Test Execution** | ~5 seconds |
 | **Total Time** | ~15 seconds |
 | **Memory Usage** | ~100 MB |
-| **Test File Size** | 3,127 lines |
+| **Test File Size** | 3,347 lines |
 | **Code Coverage** | All RTL lines |
 | **State Coverage** | All 4 main states |
 | **TAP State Coverage** | All 16 states |
+| **RISC-V Debug** | DTMCS & DMI registers |
 
 ## Key Test Findings & Design Validation
 
@@ -396,6 +406,12 @@ Test Results: 101 tests passed
 ### 7. Protocol Compliance ✅
 **Finding**: Implementation fully complies with IEEE 1149.7 OScan1 format.
 **Tests**: Tests 99-101 validate specification adherence.
+
+### 8. TDO Output During TAP State Transitions ✅
+**Finding**: TDO must remain valid during EXIT1_IR/EXIT1_DR states to allow reading the last shifted bit.
+**Fix**: Extended TDO multiplexer to output shift register values in EXIT1 states, not just SHIFT states.
+**Test**: Test 105 validates IR readback during state transitions.
+**Impact**: Enables proper instruction register readback per IEEE 1149.1 JTAG specification.
 
 ## Debugging Failed Tests
 
@@ -648,8 +664,8 @@ echo "✅ All tests passed!"
 | Complexity | Tests | Examples |
 |------------|-------|----------|
 | Simple | 30 | Basic state checks, single operations |
-| Medium | 50 | Multi-step sequences, TAP navigation |
-| Complex | 21 | Stress tests, 1000+ packets, deep TAP |
+| Medium | 53 | Multi-step sequences, TAP navigation, debug registers |
+| Complex | 22 | Stress tests, 1000+ packets, deep TAP, IR readback |
 
 ## Coverage Analysis
 
@@ -845,15 +861,17 @@ gtkwave *.fst
 
 ## Summary
 
-The cJTAG Bridge test suite provides **comprehensive validation** with **101 tests** covering:
+The cJTAG Bridge test suite provides **comprehensive validation** with **105 tests** covering:
 
 ✅ **Complete protocol implementation** (IEEE 1149.7 OScan1)
 ✅ **All state transitions and edge cases**
 ✅ **Full JTAG TAP controller validation** (all 16 states)
+✅ **RISC-V debug module integration** (DTMCS & DMI registers)
 ✅ **Timing and signal integrity verification**
 ✅ **Error recovery and robustness testing**
 ✅ **Stress testing** (up to 10,000 cycles)
 ✅ **Protocol compliance validation**
+✅ **IEEE 1149.1 JTAG compliance** (TDO timing, IR readback)
 
 **100% pass rate** with **zero compilation warnings** demonstrates a robust, production-ready implementation.
 

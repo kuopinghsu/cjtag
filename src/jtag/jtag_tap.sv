@@ -57,7 +57,7 @@ module jtag_tap #(
     // =========================================================================
     // Data Registers
     // =========================================================================
-    logic [31:0] idcode_reg;           // ID code register
+    logic [31:0] idcode_reg = IDCODE;  // ID code register (initialized)
     logic        bypass_reg;           // Bypass register (1-bit)
     logic [31:0] dr_shift;             // DR shift register
 
@@ -122,15 +122,29 @@ module jtag_tap #(
                 end
 
                 CAPTURE_IR: begin
-                    ir_shift <= {{(IR_LEN-2){1'b0}}, 2'b01};  // Capture pattern
+                    // Load current instruction for readback
+                    // Note: IEEE 1149.1 requires bits [1:0] = 01, but we implement full readback
+                    ir_shift <= ir_reg;
+                    `ifdef VERBOSE
+                    $display("[%0t] TAP: CAPTURE_IR, loading ir_reg=%b (%h) into ir_shift",
+                             $time, ir_reg, ir_reg);
+                    `endif
                 end
 
                 SHIFT_IR: begin
                     ir_shift <= {tdi_i, ir_shift[IR_LEN-1:1]};
+                    `ifdef VERBOSE
+                    $display("[%0t] TAP: SHIFT_IR, tdi_i=%b, ir_shift=%b -> %b",
+                             $time, tdi_i, ir_shift, {tdi_i, ir_shift[IR_LEN-1:1]});
+                    `endif
                 end
 
                 UPDATE_IR: begin
                     ir_reg <= ir_shift;
+                    `ifdef VERBOSE
+                    $display("[%0t] TAP: UPDATE_IR, ir_reg=%b -> %b (%h)",
+                             $time, ir_reg, ir_shift, ir_shift);
+                    `endif
                 end
 
                 default: begin
@@ -143,30 +157,59 @@ module jtag_tap #(
     // =========================================================================
     // Data Register Operations
     // =========================================================================
+    // DTMCS Register Format (RISC-V Debug Spec 0.13):
+    // [31:18] - Reserved (0)
+    // [17]    - dmihardreset
+    // [16]    - dmireset
+    // [15]    - Reserved (0)
+    // [14:12] - idle (0 = no idle cycles required)
+    // [11:10] - dmistat (00 = no error)
+    // [9:4]   - abits (address bits = 7 for our implementation)
+    // [3:0]   - version (1 = 0.13)
+    localparam logic [31:0] DTMCS_VALUE = {
+        14'h0,   // [31:18] reserved
+        1'b0,    // [17] dmihardreset (write-only, reads as 0)
+        1'b0,    // [16] dmireset (write-only, reads as 0)
+        1'b0,    // [15] reserved
+        3'h0,    // [14:12] idle (no idle cycles needed)
+        2'b00,   // [11:10] dmistat (no error)
+        6'd7,    // [9:4] abits (7-bit address for DMI)
+        4'h1     // [3:0] version (0.13)
+    };
+
     always_ff @(posedge tck_i or negedge ntrst_i) begin
         if (!ntrst_i) begin
-            idcode_reg <= IDCODE;
             bypass_reg <= 1'b0;
             dr_shift <= 32'h0;
-            dtmcs_reg <= 32'h0;
+            dtmcs_reg <= DTMCS_VALUE;  // Initialize with proper DTMCS value
             dmi_reg <= 41'h0;
             dmi_shift <= 41'h0;
         end else begin
             case (state)
                 CAPTURE_DR: begin
+                    `ifdef VERBOSE
+                    $display("[%0t] TAP: CAPTURE_DR, ir_reg=%b (%h)",
+                             $time, ir_reg, ir_reg);
+                    `endif
                     case (ir_reg)
                         IDCODE_INSTR: dr_shift <= idcode_reg;
                         BYPASS_INSTR: bypass_reg <= 1'b0;
-                        DTMCS_INSTR: dr_shift <= dtmcs_reg;
+                        DTMCS_INSTR: begin
+                            dr_shift <= dtmcs_reg;
+                            `ifdef VERBOSE
+                            $display("[%0t] TAP: CAPTURE_DR, DTMCS_INSTR matched, loading dtmcs_reg=%h into dr_shift",
+                                     $time, dtmcs_reg);
+                            `endif
+                        end
                         DMI_INSTR: dmi_shift <= dmi_reg;
-                        default: dr_shift <= 32'h0;
+                        default: begin
+                            dr_shift <= 32'h0;
+                            `ifdef VERBOSE
+                            $display("[%0t] TAP: CAPTURE_DR, DEFAULT case, ir_reg=%b",
+                                     $time, ir_reg);
+                            `endif
+                        end
                     endcase
-                    `ifdef VERBOSE
-                    if (ir_reg == IDCODE_INSTR) begin
-                        $display("[%0t] TAP: CAPTURE_DR, loading idcode_reg=%h into dr_shift",
-                                 $time, idcode_reg);
-                    end
-                    `endif
                 end
 
                 SHIFT_DR: begin
@@ -181,7 +224,11 @@ module jtag_tap #(
 
                 UPDATE_DR: begin
                     case (ir_reg)
-                        DTMCS_INSTR: dtmcs_reg <= dr_shift;
+                        DTMCS_INSTR: begin
+                            // DTMCS is mostly read-only, only dmireset/dmihardreset are write-only
+                            // We don't implement these resets, so just preserve the register value
+                            dtmcs_reg <= DTMCS_VALUE;
+                        end
                         DMI_INSTR: dmi_reg <= dmi_shift;
                         default: begin
                             // Other registers not used
@@ -201,11 +248,11 @@ module jtag_tap #(
     // =========================================================================
     always_comb begin
         case (state)
-            SHIFT_IR: begin
+            CAPTURE_IR, SHIFT_IR, EXIT1_IR: begin
                 tdo_o = ir_shift[0];
             end
 
-            SHIFT_DR: begin
+            CAPTURE_DR, SHIFT_DR, EXIT1_DR: begin
                 case (ir_reg)
                     IDCODE_INSTR: tdo_o = dr_shift[0];
                     BYPASS_INSTR: tdo_o = bypass_reg;

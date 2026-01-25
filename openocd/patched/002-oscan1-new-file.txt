@@ -46,10 +46,32 @@ static uint8_t oscan1_receive_tmsc(void);
 
 int oscan1_send_oac(void)
 {
-	for (int i = 0; i < OSCAN1_OAC_LENGTH; i++) {
-		if (oscan1_send_tckc_tmsc(1, 1) != ERROR_OK)
+	/* Send OScan1 OAC (Online Activation Code) sequence
+	 * OAC is 0xB (1011 in binary, LSB first: 1,1,0,1)
+	 * Preceded by escape sequence (6-7 TMSC toggles while TCKC high) */
+	
+	LOG_DEBUG("Sending escape sequence (6 toggles)...");
+	
+	/* Escape sequence: Toggle TMSC 6 times with TCKC high */
+	uint8_t tmsc_val = 0;
+	for (int i = 0; i < 6; i++) {
+		tmsc_val = !tmsc_val;
+		if (oscan1_send_tckc_tmsc(1, tmsc_val) != ERROR_OK)
 			return ERROR_FAIL;
 	}
+	
+	LOG_DEBUG("Sending OAC pattern (0xB = 1,1,0,1)...");
+	
+	/* OAC pattern: 1,1,0,1 (LSB first) */
+	uint8_t oac_pattern[] = {1, 1, 0, 1};
+	for (int i = 0; i < 4; i++) {
+		/* Send as TCKC edges with TMSC data */
+		if (oscan1_send_tckc_tmsc(1, oac_pattern[i]) != ERROR_OK)
+			return ERROR_FAIL;
+		if (oscan1_send_tckc_tmsc(0, oac_pattern[i]) != ERROR_OK)
+			return ERROR_FAIL;
+	}
+	
 	return ERROR_OK;
 }
 
@@ -78,12 +100,28 @@ int oscan1_send_jscan_cmd(uint8_t cmd)
 
 int oscan1_sf0_encode(uint8_t tms, uint8_t tdi, uint8_t *tdo)
 {
-	if (oscan1_send_tckc_tmsc(1, tms) != ERROR_OK)
+	/* OScan1 SF0 (Scanning Format 0) encoding:
+	 * 4-phase packet with CP=0 (control packet bit)
+	 * 
+	 * Phase 0: TCKC=0, TMSC=CP (0 for data packet)
+	 * Phase 1: TCKC=1, TMSC=CP
+	 * Phase 2: TCKC=1, TMSC=TMS/TDI (data bit)
+	 * Phase 3: TCKC=0, TMSC=TMS/TDI (sample TDO on TMSC)
+	 */
+	
+	/* Phase 0 & 1: Send CP=0 */
+	if (oscan1_send_tckc_tmsc(0, 0) != ERROR_OK)
 		return ERROR_FAIL;
-
+	if (oscan1_send_tckc_tmsc(1, 0) != ERROR_OK)
+		return ERROR_FAIL;
+	
+	/* Phase 2 & 3: Send data bit (TMS/TDI) and read TDO */
+	if (oscan1_send_tckc_tmsc(1, tdi) != ERROR_OK)
+		return ERROR_FAIL;
 	if (oscan1_send_tckc_tmsc(0, tdi) != ERROR_OK)
 		return ERROR_FAIL;
-
+	
+	/* Read TDO from TMSC line */
 	*tdo = oscan1_receive_tmsc();
 
 	return ERROR_OK;

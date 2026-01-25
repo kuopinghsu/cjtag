@@ -2917,6 +2917,237 @@ TEST_CASE(oscan1_format_compliance) {
 }
 
 // =============================================================================
+// Debug Module Tests
+// =============================================================================
+
+TEST_CASE(dtmcs_register_read) {
+    // Test reading DTMCS register (Debug Transport Module Control/Status)
+    // DTMCS is at IR = 0x10, should read 0x00000071
+
+    tb.send_escape_sequence(6);
+    tb.send_oac_sequence();
+    for (int i = 0; i < 20; i++) tb.tick();
+
+    // Navigate to SHIFT-IR to load DTMCS instruction (0x10)
+    // RESET -> RUN_TEST_IDLE -> SELECT_DR -> SELECT_IR -> CAPTURE_IR -> SHIFT_IR
+    tb.send_oscan1_packet(0, 0, nullptr); // RESET -> RUN_TEST_IDLE
+    tb.send_oscan1_packet(0, 1, nullptr); // RUN_TEST_IDLE -> SELECT_DR
+    tb.send_oscan1_packet(0, 1, nullptr); // SELECT_DR -> SELECT_IR
+    tb.send_oscan1_packet(0, 0, nullptr); // SELECT_IR -> CAPTURE_IR
+
+    // Transition to SHIFT_IR (CAPTURE happens on this clock)
+    tb.send_oscan1_packet(0, 0, nullptr); // CAPTURE_IR -> SHIFT_IR
+
+    // Shift in DTMCS instruction (0x10 = 5'b10000)
+    // IR is 5 bits, shift LSB first
+    for (int i = 0; i < 5; i++) {
+        int tdi = (0x10 >> i) & 1;
+        int tms = (i == 4) ? 1 : 0; // Exit on last bit
+        tb.send_oscan1_packet(tdi, tms, nullptr);
+    }
+
+    // EXIT1_IR -> UPDATE_IR
+    tb.send_oscan1_packet(0, 1, nullptr);
+    // UPDATE_IR -> RUN_TEST_IDLE
+    tb.send_oscan1_packet(0, 0, nullptr);
+
+    // Now read DTMCS data register (32 bits)
+    // RUN_TEST_IDLE -> SELECT_DR -> CAPTURE_DR -> SHIFT_DR
+    tb.send_oscan1_packet(0, 1, nullptr); // RUN_TEST_IDLE -> SELECT_DR
+    tb.send_oscan1_packet(0, 0, nullptr); // SELECT_DR -> CAPTURE_DR
+
+    // Read 32 bits of DTMCS
+    uint32_t dtmcs = 0;
+    int first_bit = 0;
+    tb.send_oscan1_packet(0, 0, &first_bit); // CAPTURE_DR -> SHIFT_DR
+    dtmcs = first_bit;
+
+    for (int i = 1; i < 32; i++) {
+        int tdo = 0;
+        int tms = (i == 31) ? 1 : 0;
+        tb.send_oscan1_packet(0, tms, &tdo);
+        dtmcs |= (tdo << i);
+    }
+
+    // DTMCS should be 0x00000071: version=1, abits=7, idle=0, dmistat=0
+    ASSERT_EQ(dtmcs, 0x00000071, "DTMCS should be 0x00000071 (version=1, abits=7)");
+}
+
+TEST_CASE(dtmcs_register_format) {
+    // Verify DTMCS register field values match RISC-V Debug Spec 0.13
+
+    tb.send_escape_sequence(6);
+    tb.send_oac_sequence();
+    for (int i = 0; i < 20; i++) tb.tick();
+
+    // Reset TAP to TEST_LOGIC_RESET (send TMS=1 for 5 cycles)
+    for (int i = 0; i < 5; i++) {
+        tb.send_oscan1_packet(0, 1, nullptr);
+    }
+
+    // Load DTMCS instruction
+    tb.send_oscan1_packet(0, 0, nullptr); // RESET -> RUN_TEST_IDLE
+    tb.send_oscan1_packet(0, 1, nullptr); // -> SELECT_DR
+    tb.send_oscan1_packet(0, 1, nullptr); // -> SELECT_IR
+    tb.send_oscan1_packet(0, 0, nullptr); // -> CAPTURE_IR
+
+    // Transition to SHIFT_IR (CAPTURE happens on this clock)
+    tb.send_oscan1_packet(0, 0, nullptr); // CAPTURE_IR -> SHIFT_IR
+
+    // Shift in all 5 bits
+    for (int i = 0; i < 5; i++) {
+        int tdi = (0x10 >> i) & 1;
+        int tms = (i == 4) ? 1 : 0;
+        tb.send_oscan1_packet(tdi, tms, nullptr);
+    }
+    // EXIT1_IR -> UPDATE_IR
+    tb.send_oscan1_packet(0, 1, nullptr);
+    // UPDATE_IR -> RUN_TEST_IDLE
+    tb.send_oscan1_packet(0, 0, nullptr);
+
+    // Read DTMCS
+    tb.send_oscan1_packet(0, 1, nullptr); // -> SELECT_DR
+    tb.send_oscan1_packet(0, 0, nullptr); // -> CAPTURE_DR
+
+    uint32_t dtmcs = 0;
+    int first_bit = 0;
+    tb.send_oscan1_packet(0, 0, &first_bit);
+    dtmcs = first_bit;
+
+    for (int i = 1; i < 32; i++) {
+        int tdo = 0;
+        int tms = (i == 31) ? 1 : 0;
+        tb.send_oscan1_packet(0, tms, &tdo);
+        dtmcs |= (tdo << i);
+    }
+
+    // Extract fields
+    uint8_t version = dtmcs & 0xF;
+    uint8_t abits = (dtmcs >> 4) & 0x3F;
+    uint8_t dmistat = (dtmcs >> 10) & 0x3;
+    uint8_t idle = (dtmcs >> 12) & 0x7;
+
+    ASSERT_EQ(version, 1, "DTMCS version should be 1 (Debug Spec 0.13)");
+    ASSERT_EQ(abits, 7, "DTMCS abits should be 7");
+    ASSERT_EQ(dmistat, 0, "DTMCS dmistat should be 0 (no error)");
+    ASSERT_EQ(idle, 0, "DTMCS idle should be 0");
+}
+
+TEST_CASE(dmi_register_access) {
+    // Test DMI (Debug Module Interface) register access
+    // DMI is at IR = 0x11, 41-bit register (7-bit address + 32-bit data + 2-bit op)
+
+    tb.send_escape_sequence(6);
+    tb.send_oac_sequence();
+    for (int i = 0; i < 20; i++) tb.tick();
+
+    // Reset TAP to TEST_LOGIC_RESET (send TMS=1 for 5 cycles)
+    for (int i = 0; i < 5; i++) {
+        tb.send_oscan1_packet(0, 1, nullptr);
+    }
+
+    // Load DMI instruction (0x11)
+    tb.send_oscan1_packet(0, 0, nullptr); // RESET -> RUN_TEST_IDLE
+    tb.send_oscan1_packet(0, 1, nullptr); // -> SELECT_DR
+    tb.send_oscan1_packet(0, 1, nullptr); // -> SELECT_IR
+    tb.send_oscan1_packet(0, 0, nullptr); // -> CAPTURE_IR
+
+    // Transition to SHIFT_IR (CAPTURE happens on this clock)
+    tb.send_oscan1_packet(0, 0, nullptr); // CAPTURE_IR -> SHIFT_IR
+
+    // Shift in all 5 bits of IR
+    for (int i = 0; i < 5; i++) {
+        int tdi = (0x11 >> i) & 1;
+        int tms = (i == 4) ? 1 : 0;
+        tb.send_oscan1_packet(tdi, tms, nullptr);
+    }
+    // EXIT1_IR -> UPDATE_IR
+    tb.send_oscan1_packet(0, 1, nullptr);
+    // UPDATE_IR -> RUN_TEST_IDLE
+    tb.send_oscan1_packet(0, 0, nullptr);
+
+    // Read DMI register (41 bits)
+    tb.send_oscan1_packet(0, 1, nullptr); // -> SELECT_DR
+    tb.send_oscan1_packet(0, 0, nullptr); // -> CAPTURE_DR
+
+    // Read 41 bits (will be 0 initially)
+    uint64_t dmi = 0;
+    int first_bit = 0;
+    tb.send_oscan1_packet(0, 0, &first_bit);
+    dmi = first_bit;
+
+    for (int i = 1; i < 41; i++) {
+        int tdo = 0;
+        int tms = (i == 40) ? 1 : 0;
+        tb.send_oscan1_packet(0, tms, &tdo);
+        dmi |= ((uint64_t)tdo << i);
+    }
+
+    // Initial DMI should be 0
+    ASSERT_EQ(dmi, 0ULL, "DMI should initially be 0");
+}
+
+TEST_CASE(debug_module_ir_scan) {
+    // Test scanning IR to verify DTMCS and DMI instructions are supported
+
+    tb.send_escape_sequence(6);
+    tb.send_oac_sequence();
+    for (int i = 0; i < 20; i++) tb.tick();
+
+    // Test 1: Load DTMCS (0x10) and verify it sticks
+    tb.send_oscan1_packet(0, 0, nullptr); // RESET -> RUN_TEST_IDLE
+    tb.send_oscan1_packet(0, 1, nullptr); // -> SELECT_DR
+    tb.send_oscan1_packet(0, 1, nullptr); // -> SELECT_IR
+    tb.send_oscan1_packet(0, 0, nullptr); // -> CAPTURE_IR
+
+    // Transition to SHIFT_IR (CAPTURE happens on this clock) and read bit 0
+    uint8_t ir_readback = 0;
+    int tdo_bit = 0;
+    tb.send_oscan1_packet((0x10 >> 0) & 1, 0, &tdo_bit); // CAPTURE_IR -> SHIFT_IR, read bit 0
+    ir_readback = tdo_bit;
+
+    // Shift in remaining 4 bits
+    for (int i = 1; i < 5; i++) {
+        int tdi = (0x10 >> i) & 1;
+        int tms = (i == 4) ? 1 : 0;
+        int tdo = 0;
+        tb.send_oscan1_packet(tdi, tms, &tdo);
+        ir_readback |= (tdo << i);
+    }
+
+    // EXIT1_IR -> UPDATE_IR
+    tb.send_oscan1_packet(0, 1, nullptr);
+    // Go back to run test idle
+    tb.send_oscan1_packet(0, 0, nullptr); // UPDATE_IR -> RUN_TEST_IDLE
+
+    // Test 2: Load DMI (0x11)
+    tb.send_oscan1_packet(0, 1, nullptr); // -> SELECT_DR
+    tb.send_oscan1_packet(0, 1, nullptr); // -> SELECT_IR
+    tb.send_oscan1_packet(0, 0, nullptr); // -> CAPTURE_IR
+
+    // Transition to SHIFT_IR (CAPTURE happens on this clock) and read bit 0
+    ir_readback = 0;
+    tdo_bit = 0;
+    tb.send_oscan1_packet((0x11 >> 0) & 1, 0, &tdo_bit); // CAPTURE_IR -> SHIFT_IR, read bit 0
+    ir_readback = tdo_bit;
+
+    // Shift in remaining 4 bits
+    for (int i = 1; i < 5; i++) {
+        int tdi = (0x11 >> i) & 1;
+        int tms = (i == 4) ? 1 : 0;
+        int tdo = 0;
+        tb.send_oscan1_packet(tdi, tms, &tdo);
+        ir_readback |= (tdo << i);
+    }
+
+    // EXIT1_IR -> UPDATE_IR
+    tb.send_oscan1_packet(0, 1, nullptr);
+
+    // Should read back DTMCS (0x10) that was previously loaded
+    ASSERT_EQ(ir_readback, 0x10, "IR should read back previous instruction (DTMCS)");
+}
+
+// =============================================================================
 // Main Test Runner
 // =============================================================================
 
@@ -3095,6 +3326,12 @@ int main(int argc, char** argv) {
     RUN_TEST(ieee1149_7_selection_sequence);
     RUN_TEST(oac_ec_cp_field_values);
     RUN_TEST(oscan1_format_compliance);
+
+    // Debug Module Tests
+    RUN_TEST(dtmcs_register_read);
+    RUN_TEST(dtmcs_register_format);
+    RUN_TEST(dmi_register_access);
+    RUN_TEST(debug_module_ir_scan);
 
     printf("\n========================================\n");
     printf("Test Results: %d tests passed\n", tests_passed);

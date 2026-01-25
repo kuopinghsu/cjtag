@@ -41,7 +41,6 @@ cjtag/
 │   └── README.md          # Documentation navigation hub
 ├── openocd/
 │   ├── cjtag.cfg          # OpenOCD configuration
-│   ├── test_commands.cfg  # OpenOCD test commands
 │   └── patched/           # OpenOCD patches for cJTAG support
 │       ├── 001-jtag_vpi-cjtag-support.patch
 │       ├── 002-oscan1-new-file.txt
