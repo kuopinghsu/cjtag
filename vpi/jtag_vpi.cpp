@@ -23,22 +23,19 @@
 #define CMD_SCAN_CHAIN  2
 #define CMD_SCAN_CHAIN_FLIP_TMS 3
 #define CMD_STOP_SIMU   4
-#define CMD_GET_SIGNAL_VALUE 5
-
-// cJTAG specific commands
-#define CMD_CJTAG_TCKC  0x10
-#define CMD_CJTAG_WRITE 0x11
-#define CMD_CJTAG_READ  0x12
-
 // OScan1 raw command (sends TCKC/TMSC pair, returns TMSC state)
-#define CMD_OSCAN1_RAW  0x20
+// MUST match OpenOCD patch: CMD_OSCAN1_RAW = 5
+#define CMD_OSCAN1_RAW  5
+
+// Buffer size MUST match OpenOCD's XFERT_MAX_SIZE
+#define XFERT_MAX_SIZE  512
 
 // VPI packet structure
 #pragma pack(push, 1)
 struct vpi_cmd {
     int cmd;
-    unsigned char buffer_out[4096];
-    unsigned char buffer_in[4096];
+    unsigned char buffer_out[XFERT_MAX_SIZE];
+    unsigned char buffer_in[XFERT_MAX_SIZE];
     int length;
     int nb_bits;
 };
@@ -183,20 +180,50 @@ public:
         FD_ZERO(&read_fds);
         FD_SET(client_fd, &read_fds);
 
-        if (select(client_fd + 1, &read_fds, NULL, NULL, &tv) <= 0) {
+        int select_result = select(client_fd + 1, &read_fds, NULL, NULL, &tv);
+
+        #ifdef VERBOSE
+        static int check_count = 0;
+        if (check_count++ % 50 == 0) {  // Every 50th check
+            printf("VPI: select() returned %d (check #%d)\n", select_result, check_count);
+        }
+        #endif
+
+        if (select_result <= 0) {
             return true;  // No data available
         }
 
-        // Read command
-        uint8_t cmd;
-        ssize_t n = recv(client_fd, &cmd, 1, 0);
+        // Read VPI command structure (OpenOCD format)
+        // Structure: cmd(4) + buffer_out(4096) + buffer_in(4096) + length(4) + nb_bits(4)
+        struct vpi_cmd vpi;
+        memset(&vpi, 0, sizeof(vpi));
+
+        ssize_t n = recv(client_fd, &vpi, sizeof(vpi), MSG_WAITALL);
         if (n <= 0) {
-            printf("VPI: Client disconnected\n");
+            printf("VPI: Client disconnected (recv returned %zd)\n", n);
             close(client_fd);
             client_fd = -1;
             connected = false;
             return true;
         }
+
+        if (n != sizeof(vpi)) {
+            printf("VPI: WARNING: Partial read! Expected %zu bytes, got %zd bytes\n", sizeof(vpi), n);
+        }
+
+        // Extract command (little-endian)
+        uint32_t cmd = vpi.cmd;  // Already in host byte order due to struct layout
+
+        #ifdef VERBOSE
+        static int total_commands = 0;
+        if (total_commands < 20 || total_commands % 50 == 0) {  // First 20, then every 50th
+            printf("VPI: Received command 0x%02x (total: %d) [n=%zd bytes, first 4 bytes: %02x %02x %02x %02x]\n",
+                   cmd, total_commands, n,
+                   ((unsigned char*)&vpi)[0], ((unsigned char*)&vpi)[1],
+                   ((unsigned char*)&vpi)[2], ((unsigned char*)&vpi)[3]);
+        }
+        total_commands++;
+        #endif
 
         // Process commands
         switch (cmd) {
@@ -212,18 +239,17 @@ public:
                 top->ntrst_i = 1;
                 top->eval();
 
-                // Send response
-                uint8_t resp = 0;
-                send(client_fd, &resp, 1, 0);
+                // Send full structure response (no data needed)
+                memset(&vpi.buffer_in, 0, sizeof(vpi.buffer_in));
+                send(client_fd, &vpi, sizeof(vpi), 0);
                 break;
             }
 
             case CMD_TMS_SEQ: {
                 // TMS sequence command
-                uint8_t num_bits;
-                uint8_t tms_data;
-                recv(client_fd, &num_bits, 1, 0);
-                recv(client_fd, &tms_data, 1, 0);
+                // Data format: num_bits(1) + tms_data(1) in buffer_out
+                uint8_t num_bits = vpi.buffer_out[0];
+                uint8_t tms_data = vpi.buffer_out[1];
 
                 // Execute TMS sequence
                 for (int i = 0; i < num_bits && i < 8; i++) {
@@ -236,44 +262,29 @@ public:
                     top->eval();
                 }
 
-                // Send response
-                uint8_t resp = 0;
-                send(client_fd, &resp, 1, 0);
+                // Send full structure response (no data needed)
+                memset(&vpi.buffer_in, 0, sizeof(vpi.buffer_in));
+                send(client_fd, &vpi, sizeof(vpi), 0);
                 break;
             }
 
             case CMD_SCAN_CHAIN:
             case CMD_SCAN_CHAIN_FLIP_TMS: {
                 // Scan chain command - shift data through TDI/TDO
-                uint16_t num_bits;
-                recv(client_fd, &num_bits, 2, 0);
-                num_bits = ntohs(num_bits);
+                // Data format: num_bits(2 bytes little-endian) + data in buffer_out
+                uint16_t num_bits = vpi.buffer_out[0] | (vpi.buffer_out[1] << 8);
 
                 int num_bytes = (num_bits + 7) / 8;
-                uint8_t* tdi_data = new uint8_t[num_bytes];
-                uint8_t* tdo_data = new uint8_t[num_bytes];
-                memset(tdo_data, 0, num_bytes);
+                uint8_t* tdi_data = &vpi.buffer_out[2];  // Data starts after num_bits
 
-                recv(client_fd, tdi_data, num_bytes, 0);
+                // Clear buffer_in and use it for TDO data
+                memset(&vpi.buffer_in, 0, sizeof(vpi.buffer_in));
 
-                // Shift the data
-                jtag_shift_bits(top, num_bits, tdi_data, nullptr, tdo_data);
+                // Shift the data - write TDO directly to buffer_in
+                jtag_shift_bits(top, num_bits, tdi_data, nullptr, vpi.buffer_in);
 
-                // Send back TDO data
-                send(client_fd, tdo_data, num_bytes, 0);
-
-                delete[] tdi_data;
-                delete[] tdo_data;
-                break;
-            }
-
-            case CMD_GET_SIGNAL_VALUE: {
-                // Get signal value - return current TDO
-                uint8_t signal_id;
-                recv(client_fd, &signal_id, 1, 0);
-
-                uint8_t value = top->tmsc_o;
-                send(client_fd, &value, 1, 0);
+                // Send full structure response with TDO data in buffer_in
+                send(client_fd, &vpi, sizeof(vpi), 0);
                 break;
             }
 
@@ -282,60 +293,51 @@ public:
                 return false;  // Stop simulation
             }
 
-            case CMD_CJTAG_TCKC: {
-                // Set TCKC state
-                uint8_t state;
-                recv(client_fd, &state, 1, 0);
-                tckc_state = state & 0x01;
-                top->tckc_i = tckc_state;
-                break;
-            }
-
-            case CMD_CJTAG_WRITE: {
-                // Write TMSC
-                uint8_t data;
-                recv(client_fd, &data, 1, 0);
-                tmsc_out = data & 0x01;
-                top->tmsc_i = tmsc_out;
-                break;
-            }
-
-            case CMD_CJTAG_READ: {
-                // Read TMSC (when driven by device)
-                uint8_t data = top->tmsc_o;
-                send(client_fd, &data, 1, 0);
-                break;
-            }
-
             case CMD_OSCAN1_RAW: {
                 // OScan1 raw command: send TCKC/TMSC pair, return TMSC state
-                // Format: 1 byte with bit0=TCKC, bit1=TMSC
-                uint8_t cmd_byte;
-                recv(client_fd, &cmd_byte, 1, 0);
+                // Format: 1 byte in buffer_out with bit0=TCKC, bit1=TMSC
+                uint8_t cmd_byte = vpi.buffer_out[0];
 
                 uint8_t tckc = cmd_byte & 0x01;
                 uint8_t tmsc = (cmd_byte >> 1) & 0x01;
 
-                // Apply signals
+                // Apply JTAG signals (clk_i is driven by main simulation loop, not VPI)
                 top->tckc_i = tckc;
                 top->tmsc_i = tmsc;
 
-                // Run a few clock cycles to let signals propagate
-                for (int i = 0; i < 5; i++) {
+                top->eval();  // Update combinational logic
+
+                // Provide system clock cycles for cJTAG bridge to process the signals
+                // The bridge requires MIN_ESC_CYCLES (20) for escape sequence validation
+                // Plus: synchronizer (2 clk) + edge detect (1 clk) + state machine (2-5 clk)
+                // Total: 25 cycles minimum
+                for (int i = 0; i < 25; i++) {
+                    top->clk_i = 0;
+                    top->eval();
+                    top->clk_i = 1;
                     top->eval();
                 }
 
-                // Read current TMSC output state
-                uint8_t tmsc_out = top->tmsc_o;
-                send(client_fd, &tmsc_out, 1, 0);
+                static int cmd_count = 0;
+                cmd_count++;
+                if (cmd_count <= 20 || (cmd_count % 50) == 0) {  // First 20, then every 50th
+                    printf("[VPI] CMD_OSCAN1_RAW #%d: SET tckc=%d tmsc=%d -> FINAL tckc_i=%d tmsc_i=%d tmsc_o=%d\n",
+                           cmd_count, tckc, tmsc, top->tckc_i, top->tmsc_i, top->tmsc_o);
+                }
+
+                // Read TMSC output state and return in buffer_in[0]
+                vpi.buffer_in[0] = top->tmsc_o & 0x01;
+
+                // Send full structure response with TDO bit in buffer_in[0]
+                send(client_fd, &vpi, sizeof(vpi), 0);
                 break;
             }
 
             default: {
                 printf("VPI: Unknown command: 0x%02x\n", cmd);
-                // Try to send error response
-                uint8_t resp = 0xFF;
-                send(client_fd, &resp, 1, 0);
+                // Send full structure error response
+                memset(&vpi.buffer_in, 0xFF, sizeof(vpi.buffer_in));
+                send(client_fd, &vpi, sizeof(vpi), 0);
                 break;
             }
         }

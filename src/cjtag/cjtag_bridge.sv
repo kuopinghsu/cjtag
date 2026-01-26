@@ -68,7 +68,7 @@ module cjtag_bridge (
     logic        tckc_is_high;          // TCKC currently held high
     logic [4:0]  tckc_high_cycles;      // Counter for TCKC high duration
 
-    logic [10:0] oac_shift;             // Online Activation Code shift register (11 bits)
+    logic [2:0]  oac_shift;             // Online Activation Code shift register (3 bits, 4th bit in tmsc_s)
     logic [3:0]  oac_count;             // Bit counter for OAC reception
     logic [1:0]  bit_pos;               // Position in 3-bit OScan1 packet
     logic        tmsc_sampled;          // TMSC sampled on TCKC negedge
@@ -135,16 +135,26 @@ module cjtag_bridge (
             tckc_high_cycles <= 5'd0;
             tmsc_toggle_count <= 5'd0;
         end else begin
+            // Escape detection: Monitor TMSC toggles while TCKC is high
+            // Active in ALL states to allow reset (8+ toggles) from any state
             // Track when TCKC goes high
             if (tckc_posedge) begin
                 tckc_is_high <= 1'b1;
                 tckc_high_cycles <= 5'd1;
                 tmsc_toggle_count <= 5'd0;  // Reset counter on TCKC rising edge
+
+                `ifdef VERBOSE
+                $display("[%0t] TCKC POSEDGE detected! Resetting toggle count", $time);
+                `endif
             end
             // Track TCKC going low (escape sequence ends)
             else if (tckc_negedge) begin
                 tckc_is_high <= 1'b0;
                 tckc_high_cycles <= 5'd0;
+
+                `ifdef VERBOSE
+                $display("[%0t] TCKC NEGEDGE detected! Toggle count was %0d", $time, tmsc_toggle_count);
+                `endif
             end
             // TCKC is held high - monitor TMSC and count cycles
             else if (tckc_is_high && tckc_s) begin
@@ -172,7 +182,7 @@ module cjtag_bridge (
     always_ff @(posedge clk_i or negedge ntrst_i) begin
         if (!ntrst_i) begin
             state           <= ST_OFFLINE;
-            oac_shift       <= 11'd0;
+            oac_shift       <= 3'd0;
             oac_count       <= 4'd0;
             bit_pos         <= 2'd0;
             tmsc_sampled    <= 1'b0;
@@ -186,66 +196,105 @@ module cjtag_bridge (
                     // Require TCKC was held high long enough to be intentional
                     if (tckc_negedge && tckc_high_cycles >= MIN_ESC_CYCLES) begin
                         `ifdef VERBOSE
-                        $display("[%0t] OFFLINE: Escape sequence ended, toggles=%0d, cycles=%0d",
-                                 $time, tmsc_toggle_count, tckc_high_cycles);
+                        $display("[%0t] OFFLINE (state=%0d): Escape sequence ended, toggles=%0d, cycles=%0d",
+                                 $time, state, tmsc_toggle_count, tckc_high_cycles);
                         `endif
 
                         // Evaluate escape sequence based on toggle count
                         if (tmsc_toggle_count >= 5'd6 && tmsc_toggle_count <= 5'd7) begin
                             // Selection escape (6-7 toggles) - enter activation
                             state <= ST_ONLINE_ACT;
-                            oac_shift <= 11'd0;
+                            oac_shift <= 3'd0;
                             oac_count <= 4'd0;
 
                             `ifdef VERBOSE
                             $display("[%0t] OFFLINE -> ONLINE_ACT (%0d toggles)",
                                      $time, tmsc_toggle_count);
                             `endif
+                        end else if (tmsc_toggle_count >= 5'd8) begin
+                            // Reset escape (8+ toggles) - stay in OFFLINE
+                            `ifdef VERBOSE
+                            $display("[%0t] OFFLINE: Reset escape detected (%0d toggles), staying OFFLINE",
+                                     $time, tmsc_toggle_count);
+                            `endif
                         end
                         // 4-5 toggles (deselection) stays in OFFLINE
-                        // 8+ toggles (reset) stays in OFFLINE
                     end
+
+                    `ifdef VERBOSE
+                    else if (tckc_negedge) begin
+                        $display("[%0t] OFFLINE: TCKC negedge but not enough cycles (%0d < %0d) or toggles=%0d",
+                                 $time, tckc_high_cycles, MIN_ESC_CYCLES, tmsc_toggle_count);
+                    end
+                    `endif
                 end
 
                 // =============================================================
-                // ONLINE_ACT: Receive OAC + EC + CP (12 bits on TCKC edges)
+                // ONLINE_ACT: Receive OAC (4 bits on TCKC edges)
+                // OAC = 0xB (1011 binary, LSB first: 1,1,0,1)
                 // =============================================================
                 ST_ONLINE_ACT: begin
-                    // Sample TMSC on TCKC falling edge
-                    if (tckc_negedge) begin
-                        oac_shift <= {tmsc_s, oac_shift[10:1]};
+                    `ifdef VERBOSE
+                    // Debug every clock cycle in ONLINE_ACT
+                    if (tckc_negedge || tckc_posedge) begin
+                        $display("[%0t] ONLINE_ACT: tckc_negedge=%b tckc_posedge=%b oac_count=%0d tckc_s=%b tmsc_s=%b",
+                                 $time, tckc_negedge, tckc_posedge, oac_count, tckc_s, tmsc_s);
+                    end
+                    `endif
+
+                    // Check for reset escape (8+ toggles) at any time - takes priority
+                    if (tckc_negedge && tckc_high_cycles >= MIN_ESC_CYCLES && tmsc_toggle_count >= 5'd8) begin
+                        state <= ST_OFFLINE;
+                        oac_shift <= 3'd0;
+                        oac_count <= 4'd0;
 
                         `ifdef VERBOSE
-                        $display("[%0t] ONLINE_ACT: bit %0d, tmsc_s=%b, oac_shift=%b",
-                                 $time, oac_count, tmsc_s, oac_shift);
+                        $display("[%0t] ONLINE_ACT -> OFFLINE (reset escape: %0d toggles)",
+                                 $time, tmsc_toggle_count);
+                        `endif
+                    end
+                    // Sample TMSC on TCKC falling edge (normal OAC reception)
+                    else if (tckc_negedge) begin
+                        oac_shift <= {tmsc_s, oac_shift[2:1]};
+
+                        `ifdef VERBOSE
+                        $display("[%0t] ONLINE_ACT (state=%0d): bit %0d, tmsc_s=%b",
+                                 $time, state, oac_count, tmsc_s);
                         `endif
 
-                        // After 12 bits, check the activation code
-                        if (oac_count == 4'd11) begin
+                        // After 4 bits, check the OAC pattern
+                        // Bits are received LSB first from OpenOCD: {1,1,0,1}
+                        // After 3 shifts, oac_shift[2:0] = {bit2, bit1, bit0}, tmsc_s = bit3
+                        // Combine {tmsc_s, oac_shift[2:0]} = {bit3, bit2, bit1, bit0}
+                        if (oac_count == 4'd3) begin
+                            // Check OAC pattern with 4 bits
+                            // Combine current bit (tmsc_s) with previous 3 bits from shift register
+                            logic [3:0] received_oac;
+                            received_oac = {tmsc_s, oac_shift[2:0]};
+
                             `ifdef VERBOSE
-                            $display("[%0t] Checking OAC: received=%b, expected=%b",
-                                     $time, {tmsc_s, oac_shift[10:0]}, 12'b0000_1000_1100);
+                            $display("[%0t] Checking OAC (4 bits): received=%b, expected=1011",
+                                     $time, received_oac);
                             `endif
 
-                            // Expected: OAC=1100 (LSB first), EC=1000, CP=0000
-                            // Combined: 0000_1000_1100 (MSB to LSB order in shift reg)
-                            if ({tmsc_s, oac_shift[10:0]} == 12'b0000_1000_1100) begin
+                            // OpenOCD sends {1,1,0,1} LSB first, which becomes {1,0,1,1} after right-shift
+                            if (received_oac == 4'b1011) begin
                                 state <= ST_OSCAN1;
                                 bit_pos <= 2'd0;
 
                                 `ifdef VERBOSE
-                                $display("[%0t] ONLINE_ACT -> OSCAN1, bit_pos=0", $time);
+                                $display("[%0t] ONLINE_ACT -> OSCAN1 (OAC matched!)", $time);
                                 `endif
                             end else begin
-                                // Invalid code, return offline
                                 state <= ST_OFFLINE;
 
                                 `ifdef VERBOSE
-                                $display("[%0t] ONLINE_ACT -> OFFLINE (invalid OAC)", $time);
+                                $display("[%0t] ONLINE_ACT -> OFFLINE (invalid OAC: %b)", $time, received_oac);
                                 `endif
                             end
                             oac_count <= 4'd0;
                         end else begin
+                            // Not yet 4 bits, increment counter
                             oac_count <= oac_count + 4'd1;
                         end
                     end
@@ -266,6 +315,8 @@ module cjtag_bridge (
                         // Check for reset escape (8+ toggles)
                         if (tmsc_toggle_count >= 5'd8) begin
                             state <= ST_OFFLINE;
+                            oac_shift <= 3'd0;
+                            oac_count <= 4'd0;
                             bit_pos <= 2'd0;
 
                             `ifdef VERBOSE
@@ -398,5 +449,20 @@ module cjtag_bridge (
     // Status outputs
     assign online_o = (state == ST_OSCAN1);
     assign nsp_o = (state != ST_OSCAN1);  // Standard Protocol active when not in OScan1
+
+    `ifdef VERBOSE
+    // Monitor state changes
+    logic [2:0] prev_state;
+    always_ff @(posedge clk_i or negedge ntrst_i) begin
+        if (!ntrst_i) begin
+            prev_state <= 3'd0;  // ST_OFFLINE
+        end else begin
+            if (state != prev_state) begin
+                $display("[%0t] STATE CHANGE: %0d -> %0d", $time, prev_state, state);
+                prev_state <= state;
+            end
+        end
+    end
+    `endif
 
 endmodule

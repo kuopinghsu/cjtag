@@ -31,6 +31,9 @@ int main(int argc, char** argv) {
     Verilated::commandArgs(argc, argv);
     Verilated::traceEverOn(true);
 
+    // Disable stdout buffering for immediate verbose output
+    setvbuf(stdout, NULL, _IONBF, 0);
+
     // Create DUT instance
     Vtop* top = new Vtop;
 
@@ -108,15 +111,19 @@ int main(int argc, char** argv) {
     // Main simulation loop
     vluint64_t tick_count = 0;
     const vluint64_t idle_interval = 1000;  // Cycles between VPI checks when idle
+    const vluint64_t vpi_check_interval = 1;  // Check VPI EVERY clock cycle for responsiveness
 
     while (!g_shutdown && !Verilated::gotFinish()) {
         // Generate system clock (continues running throughout simulation)
         top->clk_i = (main_time % 2) == 0 ? 0 : 1;
 
-        // Process VPI commands (VPI controls tckc_i and tmsc_i)
-        if (!jtag_vpi_tick(top)) {
-            printf("VPI requested simulation stop\n");
-            break;
+        // Process VPI commands every N clock cycles to allow cJTAG bridge time to process
+        // The cJTAG bridge needs: synchronizer (2 clk) + edge detect (1 clk) + state machine (2-5 clk)
+        if ((tick_count % vpi_check_interval) == 0) {
+            if (!jtag_vpi_tick(top)) {
+                printf("VPI requested simulation stop\n");
+                break;
+            }
         }
 
         // Evaluate model
@@ -132,7 +139,7 @@ int main(int argc, char** argv) {
         tick_count++;
 
         // Print status periodically
-        if (tick_count % 1000000 == 0) {
+        if (tick_count % 5000000 == 0) {
             printf("Simulation running... time=%llu cycles\n",
                    (unsigned long long)main_time);
         }

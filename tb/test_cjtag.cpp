@@ -46,6 +46,7 @@ void cleanup_and_exit(int code);
 
 // Global test statistics
 static int tests_passed = 0;
+static TestHarness* g_tb = nullptr;
 
 // Helper class for test harness
 class TestHarness {
@@ -135,9 +136,16 @@ public:
         // Escape sequence: Hold TCKC high and toggle TMSC edge_count times
         // System clock runs continuously in background
 
-        // First, raise TCKC
+        // First, ensure TCKC is low (so raising it creates a clean posedge)
+        // Use enough cycles for synchronizer (2-stage) + edge detection
+        dut->tckc_i = 0;
+        for (int i = 0; i < 10; i++) {
+            tick();
+        }
+
+        // Now raise TCKC
         dut->tckc_i = 1;
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 10; i++) {
             tick();
         }
 
@@ -160,13 +168,11 @@ public:
     }
 
     void send_oac_sequence() {
-        // OAC = 1100 (LSB first), EC = 1000, CP = 0000
-        // Combined: 0011 0001 0000 (transmitted LSB first for each nibble)
-        int bits[12] = {0, 0, 1, 1,  // OAC: 1100 LSB first
-                        0, 0, 0, 1,  // EC:  1000 LSB first
-                        0, 0, 0, 0}; // CP:  0000
+        // OAC = 0xB = 1011 binary = {1,1,0,1} (LSB first per IEEE 1149.7)
+        // Only send OAC bits, not EC/CP (not needed in test environment)
+        int bits[4] = {1, 1, 0, 1};  // OAC: 0xB = 1011 LSB first
 
-        for (int i = 0; i < 12; i++) {
+        for (int i = 0; i < 4; i++) {
             tckc_cycle(bits[i]);
         }
     }
@@ -210,8 +216,10 @@ public:
     }
 };
 
-// Global test harness pointer
-static TestHarness* g_tb = nullptr;
+// Verilator time callback - required for $time in SystemVerilog
+double sc_time_stamp() {
+    return g_tb ? g_tb->time : 0;
+}
 
 // Cleanup function implementation
 void cleanup_and_exit(int code) {
@@ -248,7 +256,6 @@ TEST_CASE(escape_sequence_online_6_edges) {
 
     // Run system clock to allow state transition
     for (int i = 0; i < 50; i++) {
-
         tb.tick();
     }
 
@@ -264,7 +271,6 @@ TEST_CASE(escape_sequence_reset_8_edges) {
 
     // Run system clock
     for (int i = 0; i < 50; i++) {
-
         tb.tick();
     }
 
@@ -275,7 +281,6 @@ TEST_CASE(escape_sequence_reset_8_edges) {
 
     // Run system clock
     for (int i = 0; i < 50; i++) {
-
         tb.tick();
     }
 
@@ -292,7 +297,6 @@ TEST_CASE(oac_validation_valid) {
 
     // Run system clock
     for (int i = 0; i < 50; i++) {
-
         tb.tick();
     }
 
@@ -311,7 +315,6 @@ TEST_CASE(oac_validation_invalid) {
 
     // Run system clock
     for (int i = 0; i < 50; i++) {
-
         tb.tick();
     }
 
@@ -330,7 +333,6 @@ TEST_CASE(oscan1_packet_transmission) {
 
     // Run system clock to settle
     for (int i = 0; i < 20; i++) {
-
         tb.tick();
     }
 
@@ -340,7 +342,6 @@ TEST_CASE(oscan1_packet_transmission) {
 
     // Run system clock to allow outputs to propagate
     for (int i = 0; i < 20; i++) {
-
         tb.tick();
     }
 
@@ -360,7 +361,6 @@ TEST_CASE(tck_generation) {
     // Ensure TCKC is stable low
     tb.dut->tckc_i = 0;
     for (int i = 0; i < 20; i++) {
-
         tb.tick();
     }
 
@@ -379,7 +379,6 @@ TEST_CASE(tck_generation) {
 
     // Run system clock to detect edge and update outputs
     for (int i = 0; i < 10; i++) {
-
         tb.tick();
     }
 
@@ -387,10 +386,11 @@ TEST_CASE(tck_generation) {
 
     // TCK goes low on negedge of bit 2
     tb.dut->tckc_i = 0;
-    for (int i = 0; i < 10; i++) {
 
+    for (int i = 0; i < 10; i++) {
         tb.tick();
     }
+
     ASSERT_EQ(tb.dut->tck_o, 0, "TCK should return low after bit 2");
 }
 
@@ -402,7 +402,6 @@ TEST_CASE(tmsc_bidirectional) {
     // Ensure TCKC is stable low
     tb.dut->tckc_i = 0;
     for (int i = 0; i < 20; i++) {
-
         tb.tick();
     }
 
@@ -418,7 +417,6 @@ TEST_CASE(tmsc_bidirectional) {
 
     // Run system clock to detect edge and update outputs
     for (int i = 0; i < 10; i++) {
-
         tb.tick();
     }
 
@@ -434,7 +432,6 @@ TEST_CASE(jtag_tap_idcode) {
     tb.dut->tckc_i = 0;
     tb.dut->tmsc_i = 0;
     for (int i = 0; i < 20; i++) {
-
         tb.tick();
     }
 
@@ -470,7 +467,6 @@ TEST_CASE(multiple_oscan1_packets) {
 
     // Run system clock
     for (int i = 0; i < 50; i++) {
-
         tb.tick();
     }
 
@@ -497,7 +493,6 @@ TEST_CASE(edge_ambiguity_9_edges) {
 
     // Run system clock
     for (int i = 0; i < 50; i++) {
-
         tb.tick();
     }
 
@@ -512,7 +507,6 @@ TEST_CASE(deselection_from_oscan1) {
 
     // Run system clock
     for (int i = 0; i < 50; i++) {
-
         tb.tick();
     }
 
@@ -523,7 +517,6 @@ TEST_CASE(deselection_from_oscan1) {
 
     // Run system clock
     for (int i = 0; i < 50; i++) {
-
         tb.tick();
     }
 
@@ -537,7 +530,6 @@ TEST_CASE(deselection_oscan1_alt) {
 
     // Run system clock
     for (int i = 0; i < 50; i++) {
-
         tb.tick();
     }
 
@@ -548,7 +540,6 @@ TEST_CASE(deselection_oscan1_alt) {
 
     // Run system clock
     for (int i = 0; i < 50; i++) {
-
         tb.tick();
     }
 
@@ -562,7 +553,6 @@ TEST_CASE(ntrst_hardware_reset) {
 
     // Run system clock
     for (int i = 0; i < 50; i++) {
-
         tb.tick();
     }
 
@@ -588,7 +578,6 @@ TEST_CASE(stress_test_repeated_online_offline) {
 
         // Run system clock
         for (int i = 0; i < 50; i++) {
-
             tb.tick();
         }
 
@@ -604,7 +593,6 @@ TEST_CASE(stress_test_repeated_online_offline) {
 
         // Run system clock
         for (int i = 0; i < 50; i++) {
-
             tb.tick();
         }
 
@@ -830,17 +818,17 @@ TEST_CASE(rapid_escape_sequences_100x) {
 
 TEST_CASE(oac_single_bit_errors) {
     // Test that single-bit errors in OAC cause rejection
-    // Correct OAC: 0011 0001 0000 (LSB first per nibble)
+    // Correct OAC: 1011 (LSB first: 1,1,0,1)
 
-    for (int error_bit = 0; error_bit < 12; error_bit++) {
+    for (int error_bit = 0; error_bit < 4; error_bit++) {
         tb.reset();
 
         // Go to ONLINE_ACT
         tb.send_escape_sequence(6);
 
         // Send OAC with one bit flipped
-        int correct_bits[12] = {0, 0, 1, 1,  0, 0, 0, 1,  0, 0, 0, 0};
-        for (int i = 0; i < 12; i++) {
+        int correct_bits[4] = {1, 1, 0, 1};  // OAC: 0xB = 1011 LSB first
+        for (int i = 0; i < 4; i++) {
             int bit = (i == error_bit) ? !correct_bits[i] : correct_bits[i];
             tb.tckc_cycle(bit);
         }
@@ -1056,8 +1044,8 @@ TEST_CASE(very_slow_tckc_cycles) {
     for (int i = 0; i < 100; i++) tb.tick();
 
     // Send OAC with slow timing
-    int oac_bits[12] = {0, 0, 1, 1,  0, 0, 0, 1,  0, 0, 0, 0};
-    for (int i = 0; i < 12; i++) {
+    int oac_bits[4] = {1, 1, 0, 1};  // OAC: 0xB = 1011 LSB first (no EC/CP needed)
+    for (int i = 0; i < 4; i++) {
         tb.dut->tckc_i = 1;
         tb.dut->tmsc_i = oac_bits[i];
         for (int j = 0; j < 50; j++) tb.tick();
@@ -1645,8 +1633,8 @@ TEST_CASE(oac_with_long_delays_between_bits) {
     tb.send_escape_sequence(6);
 
     // Send OAC with 100+ cycle delays
-    int oac_bits[12] = {0, 0, 1, 1,  0, 0, 0, 1,  0, 0, 0, 0};
-    for (int i = 0; i < 12; i++) {
+    int oac_bits[4] = {1, 1, 0, 1};  // OAC: 0xB = 1011 LSB first (no EC/CP)
+    for (int i = 0; i < 4; i++) {
         tb.dut->tckc_i = 1;
         tb.dut->tmsc_i = oac_bits[i];
         for (int j = 0; j < 100; j++) tb.tick();
@@ -1677,9 +1665,9 @@ TEST_CASE(oac_partial_then_timeout) {
 
     tb.send_escape_sequence(6);
 
-    // Send only 6 of 12 OAC bits
-    int oac_bits[12] = {0, 0, 1, 1,  0, 0, 0, 1,  0, 0, 0, 0};
-    for (int i = 0; i < 6; i++) {
+    // Send only 2 of 4 OAC bits (incomplete)
+    int oac_bits[4] = {1, 1, 0, 1};  // OAC: 0xB = 1011 LSB first
+    for (int i = 0; i < 2; i++) {
         tb.tckc_cycle(oac_bits[i]);
     }
 
@@ -1863,8 +1851,8 @@ TEST_CASE(tmsc_setup_hold_violations) {
     tb.send_escape_sequence(6);
 
     // Send OAC with TMSC changes at odd times
-    int oac_bits[12] = {0, 0, 1, 1,  0, 0, 0, 1,  0, 0, 0, 0};
-    for (int i = 0; i < 12; i++) {
+    int oac_bits[4] = {1, 1, 0, 1};  // OAC: 0xB = 1011 LSB first
+    for (int i = 0; i < 4; i++) {
         // Change TMSC same cycle as TCKC
         tb.dut->tmsc_i = oac_bits[i];
         tb.dut->tckc_i = 1;
