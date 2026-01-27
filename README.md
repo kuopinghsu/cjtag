@@ -33,7 +33,7 @@ cjtag/
 │   └── jtag_vpi.cpp       # VPI interface implementation
 ├── tb/
 │   ├── tb_cjtag.cpp       # C++ testbench harness
-│   └── test_cjtag.cpp     # Automated test suite (101 tests)
+│   └── test_cjtag.cpp     # Automated test suite (121 tests)
 ├── docs/
 │   ├── ARCHITECTURE.md    # System architecture and design
 │   ├── PROTOCOL.md        # cJTAG protocol specification
@@ -103,11 +103,12 @@ This runs the comprehensive test suite covering:
 - TAP state machine (all 16 states)
 - IDCODE readout
 - JTAG operations
+- RISC-V Debug Module (DTM, DTMCS, DMI registers)
 - Error recovery and robustness
 - Timing and signal integrity
 - Protocol compliance (IEEE 1149.7)
 
-Expected output: **101/101 tests passed ✅**
+Expected output: **121/121 tests passed ✅**
 
 ### 3. Interactive Simulation
 
@@ -117,14 +118,13 @@ make wave
 
 Opens the waveform in GTKWave (if installed).
 
-### 5
 ```bash
 make WAVE=1
 ```
 
 This runs the simulation with FST waveform tracing enabled. Waveform file will be saved to `cjtag.fst`.
 
-### 3. View Waveforms
+### 4. View Waveforms
 
 ```bash
 make wave
@@ -132,7 +132,7 @@ make wave
 
 Opens the waveform in GTKWave (if installed).
 
-### 4. Run VPI Server for OpenOCD
+### 5. Run VPI Server for OpenOCD
 
 ```bash
 make WAVE=1 vpi
@@ -366,12 +366,12 @@ sudo apt-get install verilator
 
 ## Automated Test Suite
 
-The project includes a comprehensive automated test suite in [tb/test_cjtag.cpp](tb/test_cjtag.cpp) with **101 test cases** providing complete protocol validation.
+The project includes a comprehensive automated test suite in [tb/test_cjtag.cpp](tb/test_cjtag.cpp) with **121 test cases** providing complete protocol validation.
 
 ### Test Statistics
-- **Total Tests**: 101 (100% passing ✅)
-- **Test File Size**: 3,127 lines
-- **Coverage**: Protocol, state machine, timing, TAP operations, error recovery, stress testing
+- **Total Tests**: 121 (100% passing ✅)
+- **Test File Size**: 4,273 lines
+- **Coverage**: Protocol, state machine, timing, TAP operations, RISC-V debug module, error recovery, stress testing
 - **Execution Time**: ~5 seconds
 
 ### Test Categories
@@ -447,7 +447,7 @@ The project includes a comprehensive automated test suite in [tb/test_cjtag.cpp]
 - All 16 TAP states individually
 - Multiple instruction values
 
-#### 10. Performance & Compliance (12 tests)
+#### 10. Performance & Compliance (11 tests)
 - nTRST pulse widths
 - Software TAP reset
 - Maximum packet rate
@@ -457,6 +457,18 @@ The project includes a comprehensive automated test suite in [tb/test_cjtag.cpp]
 - IEEE 1149.7 compliance
 - OAC/EC/CP field validation
 - OScan1 format compliance
+
+#### 11. RISC-V Debug Module (19 tests)
+- DTMCS register read and format validation
+- DMI register access (41-bit operations)
+- Debug Module registers (dmcontrol, dmstatus, hartinfo)
+- DMI write operations and read-after-write
+- Error handling (invalid addresses, dmistat field)
+- Complex sequences (sequential reads, rapid switching)
+- Complete debug initialization flow
+- Debug module state tests (halt flags, reset bits)
+- Edge cases (back-to-back operations, mixed sequences)
+- Integration tests (all registers, stress testing with 100 operations)
 
 ### Running Tests
 
@@ -483,17 +495,20 @@ cJTAG Bridge Automated Test Suite
 Running test: 01. reset_state ... PASS
 Running test: 02. escape_sequence_online_6_edges ... PASS
 ...
-Running test: 100. oac_ec_cp_field_values ... PASS
-Running test: 101. oscan1_format_compliance ... PASS
+Running test: 119. mixed_idcode_dtmcs_dmi_sequence ... PASS
+Running test: 120. debug_module_all_registers ... PASS
+Running test: 121. dmi_stress_test_100_operations ... PASS
 
 ========================================
-Test Results: 101 tests passed
+Test Results: 121 tests passed
 ========================================
 ✅ ALL TESTS PASSED!
 ```
 
 ### Test Documentation
 For detailed test descriptions, debugging guide, and adding new tests, see [docs/TEST_GUIDE.md](docs/TEST_GUIDE.md).
+
+**New in v1.2**: 19 comprehensive RISC-V Debug Module tests added, covering DTMCS, DMI, dmcontrol, dmstatus, and hartinfo registers with full integration testing.
 
 ## Manual Testing
 
@@ -537,7 +552,7 @@ Future work: Add automated testcases in `tb/` directory.
 - [README.md](README.md) - This file: Project overview and quick start
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - Detailed design architecture
 - [docs/PROTOCOL.md](docs/PROTOCOL.md) - cJTAG protocol specification
-- [docs/TEST_GUIDE.md](docs/TEST_GUIDE.md) - Comprehensive test suite guide (101 tests)
+- [docs/TEST_GUIDE.md](docs/TEST_GUIDE.md) - Comprehensive test suite guide (121 tests)
 - [docs/CHECKLIST.md](docs/CHECKLIST.md) - Design verification checklist
 
 ## License
@@ -548,7 +563,7 @@ This project is provided as-is for educational and development purposes.
 
 Contributions welcome! Areas for improvement:
 
-- [x] Comprehensive automated test suite (101 tests completed ✅)
+- [x] Comprehensive automated test suite (121 tests completed ✅)
 - [ ] Implement more scanning formats (SF1-SF3)
 - [ ] Add CRC/parity checking
 - [ ] Support multiple TAP devices
@@ -560,10 +575,11 @@ Contributions welcome! Areas for improvement:
 
 ### Completed ✅
 - IEEE 1149.7 OScan1 format implementation
-- Full JTAG TAP controller
+- Full JTAG TAP controller with RISC-V Debug Module support
 - OpenOCD VPI interface
-- **101 comprehensive automated tests** (100% passing)
+- **121 comprehensive automated tests** (100% passing)
 - Complete protocol validation
+- RISC-V Debug Module integration (DTMCS, DMI, dmcontrol, dmstatus, hartinfo)
 - Error recovery and robustness testing
 - Timing and signal integrity verification
 - Full documentation suite
@@ -614,7 +630,7 @@ Contributions welcome! Areas for improvement:
 - **Simulation speed**: ~1-10 MHz equivalent TCKC frequency
 - **VPI latency**: ~100-500 μs per transaction
 - **Memory usage**: ~100 MB for simulation
-- **Test execution**: ~5 seconds for 101 tests
+- **Test execution**: ~5 seconds for 121 tests
 - **System clock**: 100MHz free-running
 - [ ] Enhanced VPI protocol
 

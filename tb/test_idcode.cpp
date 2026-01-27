@@ -77,8 +77,9 @@ public:
     }
 
     void send_oac_sequence() {
-        int bits[12] = {0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0};
-        for (int i = 0; i < 12; i++) {
+        // OAC = 0xB = {1,1,0,1} (4 bits, LSB first)
+        int bits[4] = {1, 1, 0, 1};
+        for (int i = 0; i < 4; i++) {
             tckc_cycle(bits[i]);
         }
     }

@@ -11,6 +11,23 @@
 //   * 4-5 TMSC toggles (TCKC high): Deselection
 //   * 6-7 TMSC toggles (TCKC high): Selection (activation)
 //   * 8+ TMSC toggles (TCKC high): Reset to OFFLINE
+//
+// CLOCK RATIO REQUIREMENTS:
+// 1. Synchronizer requirement: f_sys >= 6 × f_tckc
+//    - 2-stage synchronizer needs 2 clocks to capture signal
+//    - Edge detection needs 1 additional clock
+//    - Each TCKC phase (high/low) must be stable for >= 3 system clocks
+//    - Therefore: TCKC period >= 6 system clock cycles
+//
+// 2. Escape detection requirement: TCKC high period >= MIN_ESC_CYCLES (20)
+//    - During escape sequence, TCKC must be held high for >= 20 system clocks
+//    - This ensures intentional escape vs. spurious glitches
+//    - Each TCKC edge during escape must allow sufficient time for toggle detection
+//
+// EXAMPLE: 100MHz system clock, 10MHz TCKC max
+//    - TCKC period = 100ns, system period = 10ns
+//    - Ratio: 100ns / 10ns = 10 system clocks per TCKC period (MEETS requirement >= 6)
+//    - TCKC toggle every 5 system clocks = 50ns high, 50ns low (MEETS requirement >= 30ns)
 // =============================================================================
 
 module cjtag_bridge (
@@ -125,9 +142,14 @@ module cjtag_bridge (
     // =========================================================================
     // Monitors: TCKC held high + TMSC toggling
     // Counts TMSC edges while TCKC remains high
-    // Requires TCKC to be held high for at least MIN_ESC_CYCLES to be valid
+    //
+    // MIN_ESC_CYCLES: Optional glitch filter - not required by IEEE 1149.7
+    // Set to 0 to disable (accepts escape on any TCKC negedge with valid toggle count)
+    // Set to >0 to require TCKC held high for minimum cycles (filters noise)
     // =========================================================================
-    localparam MIN_ESC_CYCLES = 20;  // Minimum system clock cycles TCKC must be high
+    // verilator lint_off UNUSEDPARAM
+    localparam MIN_ESC_CYCLES = 0;  // Minimum system clock cycles TCKC must be high (0=disabled)
+    // verilator lint_on UNUSEDPARAM
 
     always_ff @(posedge clk_i or negedge ntrst_i) begin
         if (!ntrst_i) begin
@@ -193,8 +215,7 @@ module cjtag_bridge (
                 // =============================================================
                 ST_OFFLINE: begin
                     // Check for escape sequence completion on TCKC falling edge
-                    // Require TCKC was held high long enough to be intentional
-                    if (tckc_negedge && tckc_high_cycles >= MIN_ESC_CYCLES) begin
+                    if (tckc_negedge) begin
                         `ifdef VERBOSE
                         $display("[%0t] OFFLINE (state=%0d): Escape sequence ended, toggles=%0d, cycles=%0d",
                                  $time, state, tmsc_toggle_count, tckc_high_cycles);
@@ -243,7 +264,7 @@ module cjtag_bridge (
                     `endif
 
                     // Check for reset escape (8+ toggles) at any time - takes priority
-                    if (tckc_negedge && tckc_high_cycles >= MIN_ESC_CYCLES && tmsc_toggle_count >= 5'd8) begin
+                    if (tckc_negedge && tmsc_toggle_count >= 5'd8) begin
                         state <= ST_OFFLINE;
                         oac_shift <= 3'd0;
                         oac_count <= 4'd0;
@@ -304,15 +325,9 @@ module cjtag_bridge (
                 // OSCAN1: Active mode with 3-bit scan packets
                 // =============================================================
                 ST_OSCAN1: begin
-                    // Check for escape sequence while in OSCAN1
-                    // Require TCKC was held high long enough to be intentional (not just normal clock pulse)
-                    if (tckc_negedge && tckc_high_cycles >= MIN_ESC_CYCLES) begin
-                        `ifdef VERBOSE
-                        $display("[%0t] OSCAN1: Escape sequence detected, toggles=%0d, cycles=%0d",
-                                 $time, tmsc_toggle_count, tckc_high_cycles);
-                        `endif
-
-                        // Check for reset escape (8+ toggles)
+                    // Sample on TCKC falling edge
+                    if (tckc_negedge) begin
+                        // Check for reset escape (8+ toggles while TCKC was high)
                         if (tmsc_toggle_count >= 5'd8) begin
                             state <= ST_OFFLINE;
                             oac_shift <= 3'd0;
@@ -324,25 +339,23 @@ module cjtag_bridge (
                                      $time, tmsc_toggle_count);
                             `endif
                         end
-                        // Otherwise stay in OSCAN1 (ignore other escape types)
-                    end
-                    // Normal OSCAN1 operation - sample on TCKC falling edge
-                    else if (tckc_negedge) begin
-                        // Sample TMSC for current bit position
-                        tmsc_sampled <= tmsc_s;
+                        // Normal operation: sample TMSC for current bit position
+                        else begin
+                            tmsc_sampled <= tmsc_s;
 
-                        // Advance to next bit position
-                        case (bit_pos)
-                            2'd0: bit_pos <= 2'd1;  // nTDI sampled
-                            2'd1: bit_pos <= 2'd2;  // TMS sampled
-                            2'd2: bit_pos <= 2'd0;  // TDO sampled (from device)
-                            default: bit_pos <= 2'd0;
-                        endcase
+                            // Advance to next bit position
+                            case (bit_pos)
+                                2'd0: bit_pos <= 2'd1;  // nTDI sampled
+                                2'd1: bit_pos <= 2'd2;  // TMS sampled
+                                2'd2: bit_pos <= 2'd0;  // TDO sampled (from device)
+                                default: bit_pos <= 2'd0;
+                            endcase
 
-                        `ifdef VERBOSE
-                        $display("[%0t] OSCAN1 negedge: bit_pos=%0d, tmsc_s=%b",
-                                 $time, bit_pos, tmsc_s);
-                        `endif
+                            `ifdef VERBOSE
+                            $display("[%0t] OSCAN1 negedge: bit_pos=%0d, tmsc_s=%b",
+                                     $time, bit_pos, tmsc_s);
+                            `endif
+                        end
                     end
                 end
 

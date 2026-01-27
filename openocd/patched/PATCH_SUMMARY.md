@@ -9,7 +9,7 @@ This patch enables OpenOCD's jtag_vpi driver to communicate with cJTAG (IEEE 114
 Main patch for OpenOCD's jtag_vpi driver to add cJTAG/OScan1 support.
 
 **Key Changes:**
-- Added `CMD_OSCAN1_RAW` (0x20) VPI command for sending raw TCKC/TMSC signal pairs
+- Added `CMD_OSCAN1_RAW` (0x5) VPI command for sending raw TCKC/TMSC signal pairs
 - Added `enable_cjtag` configuration command to enable cJTAG mode
 - Integrated OScan1 protocol initialization during driver startup
 - Redirected TMS sequences and data shifts through OScan1 encoding when in cJTAG mode
@@ -67,11 +67,11 @@ Header file `src/jtag/drivers/oscan1.h` with function prototypes and constants.
 
 The VPI server (`src/jtag_vpi.cpp`) has been updated to support:
 
-### CMD_OSCAN1_RAW (0x20)
+### CMD_OSCAN1_RAW (0x5)
 Sends raw TCKC/TMSC signal pairs to the cJTAG device.
 
 **Protocol:**
-- **Command byte**: 0x20
+- **Command byte**: 0x5
 - **Data byte**: bit0=TCKC, bit1=TMSC
 - **Response**: Current TMSC output state (TDO value)
 
@@ -80,18 +80,18 @@ Sends raw TCKC/TMSC signal pairs to the cJTAG device.
 case CMD_OSCAN1_RAW: {
     uint8_t cmd_byte;
     recv(client_fd, &cmd_byte, 1, 0);
-    
+
     uint8_t tckc = cmd_byte & 0x01;
     uint8_t tmsc = (cmd_byte >> 1) & 0x01;
-    
+
     top->tckc_i = tckc;
     top->tmsc_i = tmsc;
-    
+
     // Propagate signals
     for (int i = 0; i < 5; i++) {
         top->eval();
     }
-    
+
     uint8_t tmsc_out = top->tmsc_o;
     send(client_fd, &tmsc_out, 1, 0);
     break;
@@ -221,13 +221,13 @@ gtkwave cjtag.fst
    adapter driver jtag_vpi
    jtag_vpi set_port 3333
    jtag_vpi enable_cjtag on
-   
+
    transport select jtag
    adapter speed 1000
-   
+
    jtag newtap riscv cpu -irlen 5 -expected-id 0x1dead3ff
    target create riscv.cpu riscv -chain-position riscv.cpu
-   
+
    init
    ```
 

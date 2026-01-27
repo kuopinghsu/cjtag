@@ -57,13 +57,7 @@ module jtag_tap #(
     // =========================================================================
     // Data Registers
     // =========================================================================
-    logic [31:0] idcode_reg = IDCODE;  // ID code register (initialized)
     logic        bypass_reg;           // Bypass register (1-bit)
-    logic [31:0] dr_shift;             // DR shift register
-
-    logic [31:0] dtmcs_reg;            // RISC-V DTMCS register
-    logic [40:0] dmi_reg;              // RISC-V DMI register (41 bits)
-    logic [40:0] dmi_shift;
 
     // =========================================================================
     // TAP State Machine
@@ -155,89 +149,48 @@ module jtag_tap #(
     end
 
     // =========================================================================
-    // Data Register Operations
+    // Data Register Operations - Use DTM module for RISC-V debug support
     // =========================================================================
-    // DTMCS Register Format (RISC-V Debug Spec 0.13):
-    // [31:18] - Reserved (0)
-    // [17]    - dmihardreset
-    // [16]    - dmireset
-    // [15]    - Reserved (0)
-    // [14:12] - idle (0 = no idle cycles required)
-    // [11:10] - dmistat (00 = no error)
-    // [9:4]   - abits (address bits = 7 for our implementation)
-    // [3:0]   - version (1 = 0.13)
-    localparam logic [31:0] DTMCS_VALUE = {
-        14'h0,   // [31:18] reserved
-        1'b0,    // [17] dmihardreset (write-only, reads as 0)
-        1'b0,    // [16] dmireset (write-only, reads as 0)
-        1'b0,    // [15] reserved
-        3'h0,    // [14:12] idle (no idle cycles needed)
-        2'b00,   // [11:10] dmistat (no error)
-        6'd7,    // [9:4] abits (7-bit address for DMI)
-        4'h1     // [3:0] version (0.13)
-    };
 
+    // DTM control signals
+    logic dtm_tdo;
+    logic capture_dr_pulse;
+    logic shift_dr_pulse;
+    logic update_dr_pulse;
+
+    // Generate control pulses for DTM
+    assign capture_dr_pulse = (state == CAPTURE_DR);
+    assign shift_dr_pulse = (state == SHIFT_DR);
+    assign update_dr_pulse = (state == UPDATE_DR);
+
+    // Instantiate RISC-V Debug Transport Module
+    riscv_dtm #(
+        .IDCODE(IDCODE)
+    ) u_dtm (
+        .tck_i(tck_i),
+        .tdi_i(tdi_i),
+        .tdo_o(dtm_tdo),
+        .capture_dr_i(capture_dr_pulse),
+        .shift_dr_i(shift_dr_pulse),
+        .update_dr_i(update_dr_pulse),
+        .ir_i(ir_reg),
+        .ntrst_i(ntrst_i)
+    );
+
+    // Bypass register for non-DTM operations
     always_ff @(posedge tck_i or negedge ntrst_i) begin
         if (!ntrst_i) begin
             bypass_reg <= 1'b0;
-            dr_shift <= 32'h0;
-            dtmcs_reg <= DTMCS_VALUE;  // Initialize with proper DTMCS value
-            dmi_reg <= 41'h0;
-            dmi_shift <= 41'h0;
         end else begin
             case (state)
                 CAPTURE_DR: begin
-                    `ifdef VERBOSE
-                    $display("[%0t] TAP: CAPTURE_DR, ir_reg=%b (%h)",
-                             $time, ir_reg, ir_reg);
-                    `endif
-                    case (ir_reg)
-                        IDCODE_INSTR: dr_shift <= idcode_reg;
-                        BYPASS_INSTR: bypass_reg <= 1'b0;
-                        DTMCS_INSTR: begin
-                            dr_shift <= dtmcs_reg;
-                            `ifdef VERBOSE
-                            $display("[%0t] TAP: CAPTURE_DR, DTMCS_INSTR matched, loading dtmcs_reg=%h into dr_shift",
-                                     $time, dtmcs_reg);
-                            `endif
-                        end
-                        DMI_INSTR: dmi_shift <= dmi_reg;
-                        default: begin
-                            dr_shift <= 32'h0;
-                            `ifdef VERBOSE
-                            $display("[%0t] TAP: CAPTURE_DR, DEFAULT case, ir_reg=%b",
-                                     $time, ir_reg);
-                            `endif
-                        end
-                    endcase
+                    if (ir_reg == BYPASS_INSTR) bypass_reg <= 1'b0;
                 end
-
                 SHIFT_DR: begin
-                    case (ir_reg)
-                        IDCODE_INSTR: dr_shift <= {tdi_i, dr_shift[31:1]};
-                        BYPASS_INSTR: bypass_reg <= tdi_i;
-                        DTMCS_INSTR: dr_shift <= {tdi_i, dr_shift[31:1]};
-                        DMI_INSTR: dmi_shift <= {tdi_i, dmi_shift[40:1]};
-                        default: dr_shift <= {tdi_i, dr_shift[31:1]};
-                    endcase
+                    if (ir_reg == BYPASS_INSTR) bypass_reg <= tdi_i;
                 end
-
-                UPDATE_DR: begin
-                    case (ir_reg)
-                        DTMCS_INSTR: begin
-                            // DTMCS is mostly read-only, only dmireset/dmihardreset are write-only
-                            // We don't implement these resets, so just preserve the register value
-                            dtmcs_reg <= DTMCS_VALUE;
-                        end
-                        DMI_INSTR: dmi_reg <= dmi_shift;
-                        default: begin
-                            // Other registers not used
-                        end
-                    endcase
-                end
-
                 default: begin
-                    // Do nothing for other states
+                    // Hold value
                 end
             endcase
         end
@@ -254,18 +207,9 @@ module jtag_tap #(
 
             CAPTURE_DR, SHIFT_DR, EXIT1_DR: begin
                 case (ir_reg)
-                    IDCODE_INSTR: tdo_o = dr_shift[0];
                     BYPASS_INSTR: tdo_o = bypass_reg;
-                    DTMCS_INSTR: tdo_o = dr_shift[0];
-                    DMI_INSTR: tdo_o = dmi_shift[0];
-                    default: tdo_o = dr_shift[0];
+                    default: tdo_o = dtm_tdo;  // All other instructions handled by DTM
                 endcase
-                `ifdef VERBOSE
-                if (ir_reg == IDCODE_INSTR) begin
-                    $display("[%0t] TAP: SHIFT_DR, IDCODE, dr_shift=%h, tdo_o=%b",
-                             $time, dr_shift, tdo_o);
-                end
-                `endif
             end
 
             default: tdo_o = 1'b0;

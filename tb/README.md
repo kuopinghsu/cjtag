@@ -15,11 +15,11 @@ tb/
 ## Files Overview
 
 ### test_cjtag.cpp
-**Primary test suite** with 105 comprehensive automated tests covering all aspects of the cJTAG bridge implementation.
+**Primary test suite** with 121 comprehensive automated tests covering all aspects of the cJTAG bridge implementation and RISC-V debug module integration.
 
 **Statistics:**
-- **3,347 lines** of test code
-- **105 test cases** (100% passing)
+- **4,273 lines** of test code
+- **121 test cases** (100% passing)
 - **11 test categories**
 - **~5 second** execution time
 
@@ -34,7 +34,7 @@ tb/
 8. TAP-Specific Scenarios (8 tests)
 9. Multi-Cycle & Performance (6 tests)
 10. Protocol Compliance (11 tests)
-11. RISC-V Debug Module (4 tests)
+11. RISC-V Debug Module (20 tests) - DTMCS, DMI, dmcontrol, dmstatus, hartinfo, writes, reads, error handling, stress testing
 
 **Key Features:**
 - Custom test framework with macros (`TEST_CASE`, `RUN_TEST`, `ASSERT_EQ`, `ASSERT_TRUE`)
@@ -148,10 +148,12 @@ cJTAG Bridge Automated Test Suite
 Running test: 01. reset_state ... PASS
 Running test: 02. escape_sequence_online_6_edges ... PASS
 ...
-Running test: 105. debug_module_ir_scan ... PASS
+Running test: 119. mixed_idcode_dtmcs_dmi_sequence ... PASS
+Running test: 120. debug_module_all_registers ... PASS
+Running test: 121. dmi_stress_test_100_operations ... PASS
 
 ========================================
-Test Results: 105 tests passed
+Test Results: 121 tests passed
 ========================================
 ✅ ALL TESTS PASSED!
 ```
@@ -297,11 +299,11 @@ RUN_TEST(my_new_test);
 
 | Metric | Value |
 |--------|-------|
-| Total Tests | 105 |
+| Total Tests | 121 |
 | Execution Time | ~5 seconds |
 | Build Time | ~5-10 seconds |
 | Memory Usage | ~100 MB |
-| Lines of Test Code | 3,347 |
+| Lines of Test Code | 4,273 |
 | Pass Rate | 100% ✅ |
 
 ## Coverage

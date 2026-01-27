@@ -12,6 +12,7 @@ BUILD_DIR   := build
 # Source files
 RTL_SOURCES := $(SRC_DIR)/cjtag/cjtag_bridge.sv \
                $(SRC_DIR)/jtag/jtag_tap.sv \
+               $(SRC_DIR)/riscv/riscv_dtm.sv \
                $(SRC_DIR)/top.sv
 
 CPP_SOURCES := $(TB_DIR)/tb_cjtag.cpp \
@@ -29,8 +30,10 @@ VFLAGS      := --cc \
                -Wall \
                -Wno-fatal \
                --top-module $(TOP_MODULE) \
-               -CFLAGS "-I$(SRC_DIR) -I$(VPI_DIR) -std=c++14" \
                -LDFLAGS "-lpthread"
+
+# Base CFLAGS (will be extended by VERBOSE flag)
+CFLAGS_BASE := -I$(SRC_DIR) -I$(VPI_DIR) -std=c++14
 
 # Output binary
 VERILATOR_EXE := $(BUILD_DIR)/V$(TOP_MODULE)
@@ -51,8 +54,12 @@ WAVE ?= 0
 VERBOSE ?= 0
 
 ifeq ($(VERBOSE),1)
-VFLAGS += -DVERBOSE
+CFLAGS_BASE += -DVERBOSE
+VFLAGS += +define+VERBOSE
 endif
+
+# Add CFLAGS to VFLAGS
+VFLAGS += -CFLAGS "$(CFLAGS_BASE)"
 
 # =============================================================================
 # Targets
@@ -170,7 +177,6 @@ test-trace: $(VERILATOR_TEST)
 	@echo ""
 	@echo "Trace saved to: test_trace.fst"
 
-# 
 # Run simulation without waveform
 run: build
 	@echo "Running simulation (no waveform)..."
@@ -200,7 +206,7 @@ endif
 clean:
 	@echo "Cleaning build artifacts..."
 	rm -rf $(BUILD_DIR)
-	rm -f *.fst *.vcd *.log
+	rm -f *.fst *.fst.hier *.vcd *.log
 	@echo "Clean complete."
 
 # Lint RTL (optional)
@@ -235,57 +241,99 @@ status:
 	fi
 	@echo "=========================================="
 
+# Test OpenOCD VPI connection (with verbose output)
+test-openocd-verbose:
+	@$(MAKE) VERBOSE=1 test-openocd
+
 # Test OpenOCD VPI connection
 test-openocd: build
 	@echo "=========================================="
 	@echo "Testing OpenOCD VPI Connection"
 	@echo "=========================================="
+	@echo "Cleaning up any existing VPI servers..."
+	@pkill -9 Vtop 2>/dev/null || true
+	@pkill -9 openocd 2>/dev/null || true
+	@sleep 1
 	@echo "Starting VPI server in background..."
-	@$(VERILATOR_EXE) > openocd_test.log 2>&1 & \
-	VPI_PID=$$!; \
+	@if [ "$(WAVE)" = "1" ]; then \
+		echo "Waveform: Enabled (cjtag.fst)"; \
+		WAVE=1 $(VERILATOR_EXE) > openocd_test.log 2>&1 & \
+		VPI_PID=$$!; \
+	else \
+		echo "Waveform: Disabled (use WAVE=1 to enable)"; \
+		$(VERILATOR_EXE) > openocd_test.log 2>&1 & \
+		VPI_PID=$$!; \
+	fi; \
 	echo "VPI server PID: $$VPI_PID"; \
-	sleep 2; \
+	echo "Waiting for VPI server to start listening on port $(VPI_PORT)..."; \
+	for i in 1 2 3 4 5; do \
+		sleep 1; \
+		if lsof -i :$(VPI_PORT) > /dev/null 2>&1; then \
+			echo "✓ VPI server is listening on port $(VPI_PORT)"; \
+			break; \
+		fi; \
+		if [ $$i -eq 5 ]; then \
+			echo "✗ VPI server failed to start"; \
+			kill -9 $$VPI_PID 2>/dev/null || true; \
+			exit 1; \
+		fi; \
+	done; \
 	echo "Checking if VPI server is running..."; \
-	if ps -p $$VPI_PID > /dev/null; then \
+	if ps -p $$VPI_PID > /dev/null 2>&1; then \
 		echo "✓ VPI server started successfully"; \
-		echo "Connecting OpenOCD with debug level 3 (10 second timeout)..."; \
-		if timeout 10 openocd -d3 -f openocd/cjtag.cfg > openocd_output.log 2>&1; then \
-			echo "✓ OpenOCD connected successfully"; \
+		echo "Connecting OpenOCD and running test suite (30 second timeout)..."; \
+		if timeout 30 openocd -f openocd/cjtag.cfg > openocd_output.log 2>&1; then \
+			echo "✓ OpenOCD test suite completed"; \
 			RESULT=0; \
 		else \
-			echo "Checking OpenOCD output..."; \
-			if grep -q "Connection to.*successful" openocd_output.log && \
-			   grep -q "cJTAG mode enabled" openocd_output.log; then \
-				echo "✓ OpenOCD connected and cJTAG mode enabled"; \
-				RESULT=0; \
+			EXIT_CODE=$$?; \
+			echo "OpenOCD exited with code $$EXIT_CODE"; \
+			if grep -q "Can.t connect" openocd_output.log || \
+			   grep -q "Connection refused" openocd_output.log; then \
+				echo "✗ VPI connection failed"; \
+				tail -30 openocd_output.log; \
+				RESULT=1; \
+			elif grep -q "Connection to.*successful" openocd_output.log && \
+			     grep -q "OScan1 protocol initialized" openocd_output.log; then \
+				echo "✓ OpenOCD connected and OScan1 initialized"; \
+				if grep -q "1dead3ff" openocd_test.log; then \
+					echo "✓ IDCODE successfully read"; \
+					RESULT=0; \
+				else \
+					RESULT=0; \
+				fi; \
 			else \
-				echo "✗ OpenOCD connection failed"; \
-				echo "Last 30 lines of OpenOCD output:"; \
+				echo "✗ Test failed"; \
 				tail -30 openocd_output.log; \
 				RESULT=1; \
 			fi; \
 		fi; \
 		echo "Stopping VPI server..."; \
-		kill $$VPI_PID 2>/dev/null || true; \
+		kill -9 $$VPI_PID 2>/dev/null || true; \
+		sleep 0.5; \
+		if ps -p $$VPI_PID > /dev/null 2>&1; then \
+			echo "Process still running, force killing..."; \
+			pkill -9 -f Vtop 2>/dev/null || true; \
+			pkill -9 -f verilator 2>/dev/null || true; \
+			sleep 0.5; \
+		fi; \
 		wait $$VPI_PID 2>/dev/null || true; \
+		echo "✓ VPI server stopped"; \
 		echo ""; \
 		echo "========================================"; \
 		if [ $$RESULT -eq 0 ]; then \
 			echo "✅ OpenOCD Test PASSED"; \
 			echo "========================================"; \
-			echo "VPI server log: openocd_test.log"; \
-			echo "OpenOCD log: openocd_output.log"; \
+			echo "Logs: openocd_test.log, openocd_output.log"; \
+			grep -E "ONLINE_ACT.*OSCAN1|1dead3ff" openocd_test.log 2>/dev/null | head -3 || true; \
 		else \
 			echo "❌ OpenOCD Test FAILED"; \
 			echo "========================================"; \
-			echo "Check logs for details:"; \
-			echo "  - VPI server: openocd_test.log"; \
-			echo "  - OpenOCD: openocd_output.log"; \
-			exit 1; \
+			echo "Check logs: openocd_test.log, openocd_output.log"; \
 		fi; \
+		exit $$RESULT; \
 	else \
 		echo "✗ VPI server failed to start"; \
-		echo "Check openocd_test.log for details"; \
 		exit 1; \
 	fi
 

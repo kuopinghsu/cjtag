@@ -2,12 +2,12 @@
 
 ## Overview
 
-The cJTAG Bridge project includes a comprehensive automated test suite with **105 test cases** providing complete coverage of the IEEE 1149.7 cJTAG implementation. The test suite has grown from the initial 16 tests to 105 tests (a 556% increase), ensuring robust validation of all protocol aspects, edge cases, timing characteristics, hardware compliance, and RISC-V debug module integration.
+The cJTAG Bridge project includes a comprehensive automated test suite with **121 test cases** providing complete coverage of the IEEE 1149.7 cJTAG implementation and RISC-V Debug Module integration. The test suite has grown from the initial 16 tests to 121 tests (a 656% increase), ensuring robust validation of all protocol aspects, edge cases, timing characteristics, hardware compliance, and complete RISC-V debug functionality.
 
 **Test Statistics**:
-- **Total Tests**: 105 (all passing ✅)
-- **Test File Size**: 3,347 lines of code
-- **Coverage**: Protocol compliance, state machine, timing, error recovery, signal integrity, TAP operations, RISC-V debug, stress testing
+- **Total Tests**: 121 (all passing ✅)
+- **Test File Size**: 4,273 lines of code
+- **Coverage**: Protocol compliance, state machine, timing, error recovery, signal integrity, TAP operations, RISC-V debug module (DTMCS, DMI, dmcontrol, dmstatus, hartinfo), stress testing
 - **Execution Time**: ~5 seconds
 
 ## Test Suite Architecture
@@ -15,8 +15,8 @@ The cJTAG Bridge project includes a comprehensive automated test suite with **10
 ### Test Framework
 - **Location**: [tb/test_cjtag.cpp](../tb/test_cjtag.cpp)
 - **Framework**: Custom C++ test harness with Verilator
-- **Total Tests**: 105 comprehensive tests
-- **Coverage**: Full protocol, all states, edge cases, timing, signal integrity, TAP deep dive, RISC-V debug module
+- **Total Tests**: 121 comprehensive tests
+- **Coverage**: Full protocol, all states, edge cases, timing, signal integrity, TAP deep dive, comprehensive RISC-V debug module testing
 
 ### Test Harness Features
 ```cpp
@@ -35,7 +35,7 @@ class TestHarness {
 
 ## Test Suite Organization
 
-The 105 tests are organized into 11 comprehensive categories:
+The 121 tests are organized into 11 comprehensive categories:
 
 ### Category Breakdown
 1. **Basic Functionality** (16 tests) - Core protocol operations
@@ -48,7 +48,7 @@ The 105 tests are organized into 11 comprehensive categories:
 8. **TAP-Specific Scenarios** (8 tests) - Deep JTAG TAP testing
 9. **Multi-Cycle & Performance** (6 tests) - Sustained operations, stress testing
 10. **Protocol Compliance** (11 tests) - IEEE 1149.7 specification adherence
-11. **RISC-V Debug Module** (4 tests) - Debug module register access and IR scanning
+11. **RISC-V Debug Module** (20 tests) - Complete DTM, DMI, and debug register testing
 
 ## Complete Test List
 
@@ -196,7 +196,7 @@ The 105 tests are organized into 11 comprehensive categories:
 | 93 | `minimum_system_clock_ratio` | System clock adequacy verification |
 | 94 | `asymmetric_tckc_duty_cycle` | 10% vs 90% duty cycle tolerance |
 
-### 11. Data Patterns, Protocol Compliance & RISC-V Debug (Tests 95-105)
+### 11. Data Patterns, Protocol Compliance & RISC-V Debug (Tests 95-121)
 
 | # | Test Name | Purpose |
 |---|-----------|---------|
@@ -211,6 +211,22 @@ The 105 tests are organized into 11 comprehensive categories:
 | 103 | `dtmcs_register_format` | DTMCS register field validation |
 | 104 | `dmi_register_access` | RISC-V DMI register operations |
 | 105 | `debug_module_ir_scan` | IR scan with instruction readback |
+| 106 | `dmi_write_dmcontrol` | DMI write to dmcontrol register |
+| 107 | `dmi_read_after_write` | Write-then-read sequence validation |
+| 108 | `dmi_hartinfo_register` | Read hartinfo register (0x16) |
+| 109 | `dmi_invalid_address` | Invalid DMI address handling |
+| 110 | `dtmcs_dmistat_field` | DTMCS dmistat error reporting |
+| 111 | `sequential_dmi_reads` | Multiple DMI reads without IR change |
+| 112 | `rapid_dtmcs_dmi_switching` | Rapid instruction switching |
+| 113 | `dmi_41bit_boundary_test` | 41-bit DMI register full width test |
+| 114 | `complete_riscv_debug_init` | Full IDCODE→DTMCS→DMI→dmstatus flow |
+| 115 | `dmcontrol_reset_bit` | dmcontrol.dmactive field test |
+| 116 | `dmstatus_halt_flags` | anyhalted/allhalted flag validation |
+| 117 | `dmstatus_reset_flags` | anyhavereset/allhavereset validation |
+| 118 | `dmi_back_to_back_operations` | Operations without RUN_TEST_IDLE |
+| 119 | `mixed_idcode_dtmcs_dmi_sequence` | Interleaved register access |
+| 120 | `debug_module_all_registers` | Read all debug registers |
+| 121 | `dmi_stress_test_100_operations` | 100 DMI operations stress test |
 
 ## Running Tests
 
@@ -254,13 +270,13 @@ Running test: 03. escape_sequence_reset_8_edges ... PASS
 Running test: 99. ieee1149_7_selection_sequence ... PASS
 Running test: 100. oac_ec_cp_field_values ... PASS
 Running test: 101. oscan1_format_compliance ... PASS
-Running test: 102. dtmcs_register_read ... PASS
-Running test: 103. dtmcs_register_format ... PASS
-Running test: 104. dmi_register_access ... PASS
-Running test: 105. debug_module_ir_scan ... PASS
+...
+Running test: 119. mixed_idcode_dtmcs_dmi_sequence ... PASS
+Running test: 120. debug_module_all_registers ... PASS
+Running test: 121. dmi_stress_test_100_operations ... PASS
 
 ========================================
-Test Results: 105 tests passed
+Test Results: 121 tests passed
 ========================================
 ✅ ALL TESTS PASSED!
 ```
@@ -364,17 +380,17 @@ Test Results: 105 tests passed
 
 | Metric | Value |
 |--------|-------|
-| **Total Tests** | 105 |
+| **Total Tests** | 121 |
 | **Pass Rate** | 100% ✅ |
 | **Build Time** | ~5-10 seconds |
 | **Test Execution** | ~5 seconds |
 | **Total Time** | ~15 seconds |
 | **Memory Usage** | ~100 MB |
-| **Test File Size** | 3,347 lines |
+| **Test File Size** | 4,273 lines |
 | **Code Coverage** | All RTL lines |
 | **State Coverage** | All 4 main states |
 | **TAP State Coverage** | All 16 states |
-| **RISC-V Debug** | DTMCS & DMI registers |
+| **RISC-V Debug** | DTMCS, DMI, dmcontrol, dmstatus, hartinfo |
 
 ## Key Test Findings & Design Validation
 
@@ -861,15 +877,17 @@ gtkwave *.fst
 
 ## Summary
 
-The cJTAG Bridge test suite provides **comprehensive validation** with **105 tests** covering:
+The cJTAG Bridge test suite provides **comprehensive validation** with **121 tests** covering:
 
 ✅ **Complete protocol implementation** (IEEE 1149.7 OScan1)
 ✅ **All state transitions and edge cases**
 ✅ **Full JTAG TAP controller validation** (all 16 states)
-✅ **RISC-V debug module integration** (DTMCS & DMI registers)
+✅ **Complete RISC-V debug module integration** (DTM, DTMCS, DMI, dmcontrol, dmstatus, hartinfo)
+✅ **DMI operations** (41-bit reads/writes, sequential access, error handling)
+✅ **Debug initialization flows** (IDCODE→DTMCS→DMI→dmstatus)
 ✅ **Timing and signal integrity verification**
 ✅ **Error recovery and robustness testing**
-✅ **Stress testing** (up to 10,000 cycles)
+✅ **Stress testing** (up to 10,000 cycles, 100 DMI operations)
 ✅ **Protocol compliance validation**
 ✅ **IEEE 1149.1 JTAG compliance** (TDO timing, IR readback)
 

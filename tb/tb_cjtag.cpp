@@ -16,6 +16,8 @@ extern "C" {
     void jtag_vpi_init(int port);
     bool jtag_vpi_tick(Vtop* top);
     void jtag_vpi_close();
+    int jtag_vpi_get_free_run_cycles();  // Get remaining free-run cycles
+    void jtag_vpi_dec_free_run_cycles(); // Decrement free-run counter
 }
 
 // Global flag for graceful shutdown
@@ -43,7 +45,14 @@ int main(int argc, char** argv) {
 
     // Check for WAVE environment variable or +trace argument
     const char* wave_env = getenv("WAVE");
-    if ((wave_env && atoi(wave_env) == 1) || Verilated::commandArgsPlusMatch("trace")) {
+    // Don't use commandArgsPlusMatch - it's unreliable with --trace-fst compile flag
+    // Just rely on WAVE environment variable
+
+    #ifdef VERBOSE
+    printf("DEBUG: WAVE env = %s\n", wave_env ? wave_env : "NULL");
+    #endif
+
+    if (wave_env && atoi(wave_env) == 1) {
         trace_enabled = true;
         tfp = new VerilatedFstC;
         top->trace(tfp, 99);  // Trace 99 levels of hierarchy
@@ -108,45 +117,65 @@ int main(int argc, char** argv) {
 
     printf("Reset complete, entering main loop...\n\n");
 
-    // Main simulation loop
+    // Main loop with OpenOCD-controlled TCKC
+    // TCKC is driven directly by OpenOCD via CMD_OSCAN1_RAW commands
+    // No automatic TCKC toggling - OpenOCD has full control for precise timing
+    //
+    // CLOCK SYSTEM:
+    // - System clock: 100MHz (10ns period)
+    // - TCKC: Controlled by OpenOCD, not free-running
+    // - VPI commands checked every 100 system clocks (1us)
+    //
+    enum EventType { SYS_CLK_LOW, SYS_CLK_HIGH, VPI_CHECK };
+    EventType next_event = SYS_CLK_LOW;
+    int sys_clocks_since_vpi = 0;
+    const int sys_clocks_per_vpi = 100;  // Check VPI every 100 sys clocks (1us)
     vluint64_t tick_count = 0;
-    const vluint64_t idle_interval = 1000;  // Cycles between VPI checks when idle
-    const vluint64_t vpi_check_interval = 1;  // Check VPI EVERY clock cycle for responsiveness
 
     while (!g_shutdown && !Verilated::gotFinish()) {
-        // Generate system clock (continues running throughout simulation)
-        top->clk_i = (main_time % 2) == 0 ? 0 : 1;
-
-        // Process VPI commands every N clock cycles to allow cJTAG bridge time to process
-        // The cJTAG bridge needs: synchronizer (2 clk) + edge detect (1 clk) + state machine (2-5 clk)
-        if ((tick_count % vpi_check_interval) == 0) {
-            if (!jtag_vpi_tick(top)) {
-                printf("VPI requested simulation stop\n");
+        switch (next_event) {
+            case SYS_CLK_LOW:
+                // System clock low phase
+                top->clk_i = 0;
+                top->eval();
+                if (trace_enabled && tfp) tfp->dump(main_time);
+                main_time++;
+                next_event = SYS_CLK_HIGH;
                 break;
-            }
+
+            case SYS_CLK_HIGH:
+                // System clock high phase
+                top->clk_i = 1;
+                top->eval();
+                if (trace_enabled && tfp) tfp->dump(main_time);
+                main_time++;
+                sys_clocks_since_vpi++;
+
+                // Time to check VPI?
+                if (sys_clocks_since_vpi >= sys_clocks_per_vpi) {
+                    next_event = VPI_CHECK;
+                } else {
+                    next_event = SYS_CLK_LOW;
+                }
+                break;
+
+            case VPI_CHECK:
+                // Process VPI commands from OpenOCD
+                // OpenOCD directly controls TCKC via CMD_OSCAN1_RAW
+                if (!jtag_vpi_tick(top)) {
+                    printf("VPI requested simulation stop\n");
+                    g_shutdown = true;
+                }
+                sys_clocks_since_vpi = 0;
+                next_event = SYS_CLK_LOW;
+                break;
         }
-
-        // Evaluate model
-        top->eval();
-
-        // Dump waveform
-        if (trace_enabled && tfp) {
-            tfp->dump(main_time);
-        }
-
-        // Advance time (very small step for VPI responsiveness)
-        main_time++;
-        tick_count++;
 
         // Print status periodically
-        if (tick_count % 5000000 == 0) {
+        tick_count++;
+        if (tick_count % 10000000 == 0) {
             printf("Simulation running... time=%llu cycles\n",
-                   (unsigned long long)main_time);
-        }
-
-        // Small delay to avoid busy-waiting (when no VPI activity)
-        if (tick_count % idle_interval == 0) {
-            usleep(100);  // 100 microseconds
+                   (unsigned long long)main_time / 2);
         }
     }
 

@@ -1,6 +1,5 @@
 /*
  * IEEE 1149.7 cJTAG OScan1 Protocol Implementation
- * Based on OPENOCD_CJTAG_PATCH_GUIDE.md
  */
 
 #include "config.h"
@@ -52,22 +51,35 @@ int oscan1_send_oac(void)
 	
 	LOG_DEBUG("Sending escape sequence (6 toggles)...");
 	
-	/* Escape sequence: Toggle TMSC 6 times with TCKC high */
-	uint8_t tmsc_val = 0;
+	/* Escape sequence: Toggle TMSC 6 times with TCKC high
+	 * Need to send initial value + 6 toggles = 7 commands with tckc=1 */
+	uint8_t tmsc_val = 1;  // Start with TMSC=1
+	
+	/* Send initial TMSC value */
+	if (oscan1_send_tckc_tmsc(1, tmsc_val) != ERROR_OK)
+		return ERROR_FAIL;
+	
+	/* Toggle TMSC 6 times while keeping TCKC high */
 	for (int i = 0; i < 6; i++) {
 		tmsc_val = !tmsc_val;
 		if (oscan1_send_tckc_tmsc(1, tmsc_val) != ERROR_OK)
 			return ERROR_FAIL;
 	}
 	
+	/* Drop TCKC to complete escape sequence */
+	if (oscan1_send_tckc_tmsc(0, 1) != ERROR_OK)
+		return ERROR_FAIL;
+
 	LOG_DEBUG("Sending OAC pattern (0xB = 1,1,0,1)...");
 	
 	/* OAC pattern: 1,1,0,1 (LSB first) */
 	uint8_t oac_pattern[] = {1, 1, 0, 1};
 	for (int i = 0; i < 4; i++) {
+		LOG_DEBUG("  OAC bit %d: sending TCKC=1, TMSC=%d", i, oac_pattern[i]);
 		/* Send as TCKC edges with TMSC data */
 		if (oscan1_send_tckc_tmsc(1, oac_pattern[i]) != ERROR_OK)
 			return ERROR_FAIL;
+		LOG_DEBUG("  OAC bit %d: sending TCKC=0, TMSC=%d", i, oac_pattern[i]);
 		if (oscan1_send_tckc_tmsc(0, oac_pattern[i]) != ERROR_OK)
 			return ERROR_FAIL;
 	}
@@ -93,6 +105,8 @@ int oscan1_send_jscan_cmd(uint8_t cmd)
 		uint8_t bit = (packet >> i) & 1;
 		if (oscan1_send_tckc_tmsc(1, bit) != ERROR_OK)
 			return ERROR_FAIL;
+		if (oscan1_send_tckc_tmsc(0, bit) != ERROR_OK)
+			return ERROR_FAIL;
 	}
 
 	return ERROR_OK;
@@ -100,30 +114,42 @@ int oscan1_send_jscan_cmd(uint8_t cmd)
 
 int oscan1_sf0_encode(uint8_t tms, uint8_t tdi, uint8_t *tdo)
 {
-	/* OScan1 SF0 (Scanning Format 0) encoding:
-	 * 4-phase packet with CP=0 (control packet bit)
+	/* Simplified 2-bit packet format (non-standard, custom for our cJTAG bridge)
 	 * 
-	 * Phase 0: TCKC=0, TMSC=CP (0 for data packet)
-	 * Phase 1: TCKC=1, TMSC=CP
-	 * Phase 2: TCKC=1, TMSC=TMS/TDI (data bit)
-	 * Phase 3: TCKC=0, TMSC=TMS/TDI (sample TDO on TMSC)
+	 * Matches test_idcode.cpp send_oscan1_packet():
+	 *   tckc_cycle(!tdi);  // Bit 0: inverted TDI
+	 *   tckc_cycle(tms);   // Bit 1: TMS
+	 *   tckc pulse high to read TDO
+	 *
+	 * Each tckc_cycle() is: TCKC=0→1→0
+	 * Bridge samples on TCKC negedge, drives TDO on bit2 posedge
 	 */
 	
-	/* Phase 0 & 1: Send CP=0 */
-	if (oscan1_send_tckc_tmsc(0, 0) != ERROR_OK)
-		return ERROR_FAIL;
-	if (oscan1_send_tckc_tmsc(1, 0) != ERROR_OK)
-		return ERROR_FAIL;
+	uint8_t inverted_tdi = !tdi;
 	
-	/* Phase 2 & 3: Send data bit (TMS/TDI) and read TDO */
-	if (oscan1_send_tckc_tmsc(1, tdi) != ERROR_OK)
+	/* Bit 0: Send inverted TDI with TCKC cycle (1→0) */
+	if (oscan1_send_tckc_tmsc(1, inverted_tdi) != ERROR_OK)
 		return ERROR_FAIL;
-	if (oscan1_send_tckc_tmsc(0, tdi) != ERROR_OK)
+	if (oscan1_send_tckc_tmsc(0, inverted_tdi) != ERROR_OK)
+		return ERROR_FAIL;
+
+	/* Bit 1: Send TMS with TCKC cycle (1→0) */
+	if (oscan1_send_tckc_tmsc(1, tms) != ERROR_OK)
+		return ERROR_FAIL;
+	if (oscan1_send_tckc_tmsc(0, tms) != ERROR_OK)
+		return ERROR_FAIL;
+
+	/* Bit 2/TDO Read: TCKC pulse high (posedge) to drive TDO */
+	if (oscan1_send_tckc_tmsc(1, 0) != ERROR_OK)
 		return ERROR_FAIL;
 	
 	/* Read TDO from TMSC line */
 	*tdo = oscan1_receive_tmsc();
-
+	
+	/* Return TCKC to low for next packet */
+	if (oscan1_send_tckc_tmsc(0, 0) != ERROR_OK)
+		return ERROR_FAIL;
+	
 	return ERROR_OK;
 }
 

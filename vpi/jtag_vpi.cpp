@@ -52,9 +52,10 @@ public:
     bool cjtag_mode;
     uint8_t tckc_state;
     uint8_t tmsc_out;
+    int free_run_cycles;  // Number of TCKC cycles to free-run (0 = OpenOCD controlled)
 
     JtagVpi(int port_num = 3333) : port(port_num), connected(false),
-                                    cjtag_mode(true), tckc_state(0), tmsc_out(0) {
+                                    cjtag_mode(true), tckc_state(0), tmsc_out(0), free_run_cycles(0) {
         server_fd = -1;
         client_fd = -1;
     }
@@ -136,38 +137,6 @@ public:
         connected = false;
     }
 
-    // Send JTAG bits via cJTAG interface
-    void jtag_shift_bits(Vtop* top, int num_bits, const uint8_t* tdi_data,
-                         const uint8_t* tms_data, uint8_t* tdo_data) {
-        for (int i = 0; i < num_bits; i++) {
-            // Extract bit i from byte array
-            int byte_idx = i / 8;
-            int bit_idx = i % 8;
-
-            uint8_t tdi = (tdi_data && tdi_data[byte_idx] & (1 << bit_idx)) ? 1 : 0;
-            uint8_t tms = (tms_data && tms_data[byte_idx] & (1 << bit_idx)) ? 1 : 0;
-
-            // Send via cJTAG (converted to 4-phase encoding internally)
-            top->tmsc_i = tdi;  // TDI through TMSC
-
-            // Clock cycle
-            top->tckc_i = 0;
-            top->eval();
-            top->tckc_i = 1;
-            top->eval();
-
-            // Read TDO if requested
-            if (tdo_data) {
-                uint8_t tdo = top->tmsc_o;
-                if (tdo) {
-                    tdo_data[byte_idx] |= (1 << bit_idx);
-                } else {
-                    tdo_data[byte_idx] &= ~(1 << bit_idx);
-                }
-            }
-        }
-    }
-
     bool process_commands(Vtop* top) {
         if (!connected) return true;
 
@@ -228,12 +197,11 @@ public:
         // Process commands
         switch (cmd) {
             case CMD_RESET: {
-                // Reset the JTAG TAP
+                // Reset the JTAG TAP using ntrst (don't touch free-running tckc_i)
                 top->ntrst_i = 0;
-                for (int i = 0; i < 10; i++) {
-                    top->tckc_i = 0;
-                    top->eval();
-                    top->tckc_i = 1;
+                top->eval();
+                // Hold reset for a few evals to ensure it propagates
+                for (int i = 0; i < 5; i++) {
                     top->eval();
                 }
                 top->ntrst_i = 1;
@@ -246,44 +214,45 @@ public:
             }
 
             case CMD_TMS_SEQ: {
-                // TMS sequence command
-                // Data format: num_bits(1) + tms_data(1) in buffer_out
-                uint8_t num_bits = vpi.buffer_out[0];
-                uint8_t tms_data = vpi.buffer_out[1];
+                // TMS sequence command - send TMS bits
+                // Format: buffer_out[] contains TMS bits packed, nb_bits = number of bits
+                // Note: This command is not well-supported in cJTAG mode
+                //       OpenOCD should use CMD_OSCAN1_RAW instead
 
-                // Execute TMS sequence
-                for (int i = 0; i < num_bits && i < 8; i++) {
-                    uint8_t tms = (tms_data >> i) & 0x01;
-                    top->tmsc_i = tms;
+                printf("VPI: CMD_TMS_SEQ: %d TMS bits (WARNING: Use CMD_OSCAN1_RAW for cJTAG)\n", vpi.nb_bits);
 
-                    top->tckc_i = 0;
-                    top->eval();
+                // Send each TMS bit via TMSC with TCKC pulsing
+                for (int bit = 0; bit < vpi.nb_bits; bit++) {
+                    int byte_idx = bit / 8;
+                    int bit_idx = bit % 8;
+                    uint8_t tms_bit = (vpi.buffer_out[byte_idx] >> bit_idx) & 0x01;
+
+                    // Set TMSC to TMS value, pulse TCKC
+                    top->tmsc_i = tms_bit;
                     top->tckc_i = 1;
+                    top->eval();
+                    top->tckc_i = 0;
                     top->eval();
                 }
 
-                // Send full structure response (no data needed)
+                // Return TDO state (read from TMSC output)
                 memset(&vpi.buffer_in, 0, sizeof(vpi.buffer_in));
+                vpi.buffer_in[0] = top->tmsc_o & 0x01;
                 send(client_fd, &vpi, sizeof(vpi), 0);
+
+                printf("VPI: CMD_TMS_SEQ completed\n");
                 break;
             }
 
             case CMD_SCAN_CHAIN:
             case CMD_SCAN_CHAIN_FLIP_TMS: {
-                // Scan chain command - shift data through TDI/TDO
-                // Data format: num_bits(2 bytes little-endian) + data in buffer_out
-                uint16_t num_bits = vpi.buffer_out[0] | (vpi.buffer_out[1] << 8);
+                // Scan chain commands - NOT SUPPORTED with free-running TCKC
+                // These are legacy JTAG commands that require manual clock control
+                // OScan1 mode uses CMD_OSCAN1_RAW instead
+                printf("VPI: WARNING: CMD_SCAN_CHAIN not supported with free-running TCKC (use CMD_OSCAN1_RAW)\n");
 
-                int num_bytes = (num_bits + 7) / 8;
-                uint8_t* tdi_data = &vpi.buffer_out[2];  // Data starts after num_bits
-
-                // Clear buffer_in and use it for TDO data
-                memset(&vpi.buffer_in, 0, sizeof(vpi.buffer_in));
-
-                // Shift the data - write TDO directly to buffer_in
-                jtag_shift_bits(top, num_bits, tdi_data, nullptr, vpi.buffer_in);
-
-                // Send full structure response with TDO data in buffer_in
+                // Send error response
+                memset(&vpi.buffer_in, 0xFF, sizeof(vpi.buffer_in));
                 send(client_fd, &vpi, sizeof(vpi), 0);
                 break;
             }
@@ -294,36 +263,26 @@ public:
             }
 
             case CMD_OSCAN1_RAW: {
-                // OScan1 raw command: send TCKC/TMSC pair, return TMSC state
+                // OScan1 raw command: Direct control of TCKC and TMSC
                 // Format: 1 byte in buffer_out with bit0=TCKC, bit1=TMSC
+                // OpenOCD directly controls TCKC for escape sequences and OAC
                 uint8_t cmd_byte = vpi.buffer_out[0];
 
                 uint8_t tckc = cmd_byte & 0x01;
                 uint8_t tmsc = (cmd_byte >> 1) & 0x01;
 
-                // Apply JTAG signals (clk_i is driven by main simulation loop, not VPI)
+                static int raw_cmd_count = 0;
+                raw_cmd_count++;
+                if (raw_cmd_count <= 30) {
+                    printf("[VPI] CMD_OSCAN1_RAW #%d: tckc=%d tmsc=%d\n",
+                           raw_cmd_count, tckc, tmsc);
+                }
+
+                // Directly drive TCKC and TMSC from OpenOCD command
+                // No free-running - OpenOCD controls every edge
                 top->tckc_i = tckc;
                 top->tmsc_i = tmsc;
-
-                top->eval();  // Update combinational logic
-
-                // Provide system clock cycles for cJTAG bridge to process the signals
-                // The bridge requires MIN_ESC_CYCLES (20) for escape sequence validation
-                // Plus: synchronizer (2 clk) + edge detect (1 clk) + state machine (2-5 clk)
-                // Total: 25 cycles minimum
-                for (int i = 0; i < 25; i++) {
-                    top->clk_i = 0;
-                    top->eval();
-                    top->clk_i = 1;
-                    top->eval();
-                }
-
-                static int cmd_count = 0;
-                cmd_count++;
-                if (cmd_count <= 20 || (cmd_count % 50) == 0) {  // First 20, then every 50th
-                    printf("[VPI] CMD_OSCAN1_RAW #%d: SET tckc=%d tmsc=%d -> FINAL tckc_i=%d tmsc_i=%d tmsc_o=%d\n",
-                           cmd_count, tckc, tmsc, top->tckc_i, top->tmsc_i, top->tmsc_o);
-                }
+                top->eval();
 
                 // Read TMSC output state and return in buffer_in[0]
                 vpi.buffer_in[0] = top->tmsc_o & 0x01;
@@ -369,6 +328,16 @@ extern "C" {
         if (g_vpi != nullptr) {
             delete g_vpi;
             g_vpi = nullptr;
+        }
+    }
+
+    int jtag_vpi_get_free_run_cycles() {
+        return g_vpi ? g_vpi->free_run_cycles : 0;
+    }
+
+    void jtag_vpi_dec_free_run_cycles() {
+        if (g_vpi && g_vpi->free_run_cycles > 0) {
+            g_vpi->free_run_cycles--;
         }
     }
 }
