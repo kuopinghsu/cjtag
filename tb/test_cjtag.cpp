@@ -65,7 +65,7 @@ public:
             Verilated::traceEverOn(true);
             tfp = new VerilatedFstC;
             dut->trace(tfp, 99);
-            tfp->open("test_trace.fst");
+            tfp->open("cjtag.fst");
         }
 
         reset();
@@ -4080,7 +4080,7 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--trace") == 0) {
             trace = true;
-            printf("Tracing enabled: test_trace.fst\n\n");
+            printf("Tracing enabled: cjtag.fst\n\n");
         }
     }
 

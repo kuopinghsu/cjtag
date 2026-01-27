@@ -161,7 +161,7 @@ test: $(VERILATOR_TEST)
 	@echo "Running automated test suite..."
 	@echo "=========================================="
 ifeq ($(WAVE),1)
-	@echo "Waveform: Enabled (test_trace.fst)"
+	@echo "Waveform: Enabled (cjtag.fst)"
 	@$(VERILATOR_TEST) --trace
 else
 	@$(VERILATOR_TEST)
@@ -175,7 +175,7 @@ test-trace: $(VERILATOR_TEST)
 	@echo "=========================================="
 	@$(VERILATOR_TEST) --trace
 	@echo ""
-	@echo "Trace saved to: test_trace.fst"
+	@echo "Trace saved to: cjtag.fst"
 
 # Run simulation without waveform
 run: build
@@ -274,6 +274,8 @@ test-openocd: build
 		fi; \
 		if [ $$i -eq 5 ]; then \
 			echo "✗ VPI server failed to start"; \
+			kill -TERM $$VPI_PID 2>/dev/null || true; \
+			sleep 0.5; \
 			kill -9 $$VPI_PID 2>/dev/null || true; \
 			exit 1; \
 		fi; \
@@ -282,42 +284,67 @@ test-openocd: build
 	if ps -p $$VPI_PID > /dev/null 2>&1; then \
 		echo "✓ VPI server started successfully"; \
 		echo "Connecting OpenOCD and running test suite (30 second timeout)..."; \
-		if timeout 30 openocd -f openocd/cjtag.cfg > openocd_output.log 2>&1; then \
-			echo "✓ OpenOCD test suite completed"; \
-			RESULT=0; \
-		else \
-			EXIT_CODE=$$?; \
-			echo "OpenOCD exited with code $$EXIT_CODE"; \
-			if grep -q "Can.t connect" openocd_output.log || \
-			   grep -q "Connection refused" openocd_output.log; then \
-				echo "✗ VPI connection failed"; \
-				tail -30 openocd_output.log; \
-				RESULT=1; \
-			elif grep -q "Connection to.*successful" openocd_output.log && \
-			     grep -q "OScan1 protocol initialized" openocd_output.log; then \
-				echo "✓ OpenOCD connected and OScan1 initialized"; \
-				if grep -q "1dead3ff" openocd_test.log; then \
-					echo "✓ IDCODE successfully read"; \
-					RESULT=0; \
+		(timeout -s KILL 30 openocd -d3 -f openocd/cjtag.cfg > openocd_output.log 2>&1) & \
+		OPENOCD_PID=$$!; \
+		echo "OpenOCD PID: $$OPENOCD_PID"; \
+		wait $$OPENOCD_PID; \
+		EXIT_CODE=$$?; \
+		echo "OpenOCD exited with code $$EXIT_CODE"; \
+		if [ $$EXIT_CODE -eq 137 ] || [ $$EXIT_CODE -eq 124 ]; then \
+			echo "⚠ OpenOCD timed out after 30 seconds"; \
+		fi; \
+		if grep -q "Can.t connect" openocd_output.log || \
+		   grep -q "Connection refused" openocd_output.log; then \
+			echo "✗ VPI connection failed"; \
+			tail -30 openocd_output.log; \
+			RESULT=1; \
+		elif grep -q "Connection to.*successful" openocd_output.log && \
+		     grep -q "OScan1 protocol initialized" openocd_output.log; then \
+			echo "✓ OpenOCD connected and OScan1 initialized"; \
+			if grep -q "Test Complete" openocd_output.log; then \
+				echo "✓ OpenOCD test suite completed"; \
+				if [ $$EXIT_CODE -eq 0 ]; then \
+					if grep -q "IDCODE matches expected value" openocd_output.log; then \
+						echo "✅ IDCODE verified: 0x1DEAD3FF"; \
+						RESULT=0; \
+					else \
+						echo "❌ IDCODE verification failed"; \
+						tail -20 openocd_output.log | grep -A 5 "IDCODE"; \
+						RESULT=1; \
+					fi; \
 				else \
-					RESULT=0; \
+					echo "❌ OpenOCD returned error code $$EXIT_CODE"; \
+					RESULT=1; \
 				fi; \
 			else \
-				echo "✗ Test failed"; \
-				tail -30 openocd_output.log; \
+				echo "⚠ Test did not complete fully"; \
+				if [ $$EXIT_CODE -eq 137 ] || [ $$EXIT_CODE -eq 124 ]; then \
+					echo "⚠ OpenOCD timed out (expected - known cJTAG bridge limitation)"; \
+					echo "  The bridge successfully enters OSCAN1 but may not maintain state"; \
+					echo "  during complex JTAG operations (target examination)."; \
+				fi; \
 				RESULT=1; \
 			fi; \
+		else \
+			echo "✗ Test failed"; \
+			tail -30 openocd_output.log; \
+			RESULT=1; \
 		fi; \
-		echo "Stopping VPI server..."; \
-		kill -9 $$VPI_PID 2>/dev/null || true; \
-		sleep 0.5; \
+		echo "Stopping VPI server (PID: $$VPI_PID)..."; \
+		kill -TERM $$VPI_PID 2>/dev/null && echo "  SIGTERM sent" || echo "  SIGTERM failed"; \
+		sleep 1.5; \
 		if ps -p $$VPI_PID > /dev/null 2>&1; then \
-			echo "Process still running, force killing..."; \
+			echo "Process still running after SIGTERM, sending SIGKILL..."; \
+			kill -9 $$VPI_PID 2>/dev/null || true; \
 			pkill -9 -f Vtop 2>/dev/null || true; \
 			pkill -9 -f verilator 2>/dev/null || true; \
 			sleep 0.5; \
+		else \
+			echo "  Process exited cleanly after SIGTERM"; \
 		fi; \
 		wait $$VPI_PID 2>/dev/null || true; \
+		echo "✓ Waiting for FST file to be written..."; \
+		sleep 1; \
 		echo "✓ VPI server stopped"; \
 		echo ""; \
 		echo "========================================"; \

@@ -403,7 +403,7 @@ TCK pulses once every 3 TCKC cycles during OScan1 operation. TCK goes high on TC
 
 ## Waveform Signals to Observe
 
-When viewing FST waveforms (`cjtag.fst` or `test_trace.fst`):
+When viewing FST waveforms (`cjtag.fst`):
 
 | Signal | Description | Key Events |
 |--------|-------------|------------|
@@ -775,7 +775,7 @@ make test
 make test-trace
 
 # View waveforms
-gtkwave test_trace.fst
+gtkwave cjtag.fst
 ```
 
 ### Expected Output
@@ -798,7 +798,7 @@ Test Results: 16 tests passed
 
 ### Waveform Analysis
 
-Key signals to observe in `cjtag.fst` or `test_trace.fst`:
+Key signals to observe in `cjtag.fst`:
 
 | Signal | Description | Key Events |
 |--------|-------------|------------|

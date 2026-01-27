@@ -22,10 +22,19 @@ extern "C" {
 
 // Global flag for graceful shutdown
 static bool g_shutdown = false;
+static VerilatedFstC* g_tfp = nullptr;  // Global trace pointer for signal handler
 
 void signal_handler(int signum) {
     printf("\nReceived signal %d, shutting down...\n", signum);
     g_shutdown = true;
+
+    // Immediately flush and close trace file to ensure waveform is saved
+    if (g_tfp) {
+        printf("Flushing waveform trace...\n");
+        g_tfp->flush();
+        g_tfp->close();
+        g_tfp = nullptr;
+    }
 }
 
 int main(int argc, char** argv) {
@@ -55,6 +64,7 @@ int main(int argc, char** argv) {
     if (wave_env && atoi(wave_env) == 1) {
         trace_enabled = true;
         tfp = new VerilatedFstC;
+        g_tfp = tfp;  // Store in global for signal handler
         top->trace(tfp, 99);  // Trace 99 levels of hierarchy
         tfp->open("cjtag.fst");
         printf("FST waveform tracing enabled: cjtag.fst\n");
@@ -138,7 +148,11 @@ int main(int argc, char** argv) {
                 // System clock low phase
                 top->clk_i = 0;
                 top->eval();
-                if (trace_enabled && tfp) tfp->dump(main_time);
+                if (trace_enabled && tfp) {
+                    tfp->dump(main_time);
+                    // Flush more frequently during OpenOCD testing
+                    if (main_time % 1000 == 0) tfp->flush();
+                }
                 main_time++;
                 next_event = SYS_CLK_HIGH;
                 break;
@@ -147,7 +161,10 @@ int main(int argc, char** argv) {
                 // System clock high phase
                 top->clk_i = 1;
                 top->eval();
-                if (trace_enabled && tfp) tfp->dump(main_time);
+                if (trace_enabled && tfp) {
+                    tfp->dump(main_time);
+                    if (main_time % 1000 == 0) tfp->flush();
+                }
                 main_time++;
                 sys_clocks_since_vpi++;
 
@@ -176,16 +193,21 @@ int main(int argc, char** argv) {
         if (tick_count % 10000000 == 0) {
             printf("Simulation running... time=%llu cycles\n",
                    (unsigned long long)main_time / 2);
+            // Flush trace periodically to ensure data is written
+            if (trace_enabled && tfp && g_tfp) {
+                tfp->flush();
+            }
         }
     }
 
     printf("\nSimulation ending at time %llu\n", (unsigned long long)main_time);
 
     // Cleanup
-    if (trace_enabled && tfp) {
+    if (trace_enabled && tfp && g_tfp) {
         tfp->flush();
         tfp->close();
         delete tfp;
+        g_tfp = nullptr;
     }
 
     jtag_vpi_close();
