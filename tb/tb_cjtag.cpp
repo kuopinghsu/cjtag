@@ -45,8 +45,13 @@ int main(int argc, char** argv) {
     // Disable stdout buffering for immediate verbose output
     setvbuf(stdout, NULL, _IONBF, 0);
 
+    // Create Verilator context (needed for $time in SystemVerilog)
+    VerilatedContext* contextp = new VerilatedContext;
+    contextp->commandArgs(argc, argv);
+    contextp->traceEverOn(true);
+
     // Create DUT instance
-    Vtop* top = new Vtop;
+    Vtop* top = new Vtop(contextp);
 
     // Initialize waveform trace (if enabled)
     VerilatedFstC* tfp = nullptr;
@@ -122,6 +127,8 @@ int main(int argc, char** argv) {
             tfp->dump(main_time);
         }
 
+        // Advance Verilator time for $time in SystemVerilog
+        contextp->timeInc(1);
         main_time++;
     }
 
@@ -153,6 +160,7 @@ int main(int argc, char** argv) {
                     // Flush more frequently during OpenOCD testing
                     if (main_time % 1000 == 0) tfp->flush();
                 }
+                contextp->timeInc(1);  // Advance Verilator time for $time
                 main_time++;
                 next_event = SYS_CLK_HIGH;
                 break;
@@ -165,6 +173,7 @@ int main(int argc, char** argv) {
                     tfp->dump(main_time);
                     if (main_time % 1000 == 0) tfp->flush();
                 }
+                contextp->timeInc(1);  // Advance Verilator time for $time
                 main_time++;
                 sys_clocks_since_vpi++;
 

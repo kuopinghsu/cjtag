@@ -185,12 +185,12 @@ public:
 
         #ifdef VERBOSE
         static int total_commands = 0;
-        if (total_commands < 20 || total_commands % 50 == 0) {  // First 20, then every 50th
+        //if (total_commands < 20 || total_commands % 50 == 0) {  // First 20, then every 50th
             printf("VPI: Received command 0x%02x (total: %d) [n=%zd bytes, first 4 bytes: %02x %02x %02x %02x]\n",
                    cmd, total_commands, n,
                    ((unsigned char*)&vpi)[0], ((unsigned char*)&vpi)[1],
                    ((unsigned char*)&vpi)[2], ((unsigned char*)&vpi)[3]);
-        }
+        //}
         total_commands++;
         #endif
 
@@ -287,8 +287,10 @@ public:
                 // Read TMSC output state and return in buffer_in[0]
                 vpi.buffer_in[0] = top->tmsc_o & 0x01;
 
-                // Send full structure response with TDO bit in buffer_in[0]
-                send(client_fd, &vpi, sizeof(vpi), 0);
+                // Optimized response for cJTAG: only send header (12 bytes) + data (1 byte)
+                // This is 77x faster than sending full ~1KB struct
+                int response_size = 12 + vpi.length;  // 12 = sizeof(cmd+length+nb_bits), length=1
+                send(client_fd, &vpi, response_size, 0);
                 break;
             }
 

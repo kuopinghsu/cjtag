@@ -11,7 +11,7 @@ index 5216e5d77..e4bd89774 100644
  if VDEBUG
  DRIVERFILES += %D%/vdebug.c
 diff --git a/src/jtag/drivers/jtag_vpi.c b/src/jtag/drivers/jtag_vpi.c
-index fac27b306..ca351a146 100644
+index fac27b306..edb353710 100644
 --- a/src/jtag/drivers/jtag_vpi.c
 +++ b/src/jtag/drivers/jtag_vpi.c
 @@ -23,6 +23,7 @@
@@ -49,7 +49,21 @@ index fac27b306..ca351a146 100644
  	default:
  		return "<unknown>";
  	}
-@@ -226,6 +233,22 @@ static int jtag_vpi_tms_seq(const uint8_t *bits, int nb_bits)
+@@ -159,8 +166,11 @@ retry_write:
+ static int jtag_vpi_receive_cmd(struct vpi_cmd *vpi)
+ {
+ 	unsigned int bytes_buffered = 0;
+-	while (bytes_buffered < sizeof(struct vpi_cmd)) {
+-		int bytes_to_receive = sizeof(struct vpi_cmd) - bytes_buffered;
++/* Backward compatible: optimize only for cJTAG */
++	int expected_size = (jtag_vpi_cjtag_mode && vpi->length == 1) ? (12 + vpi->length) : sizeof(struct vpi_cmd);
++
++	while (bytes_buffered < expected_size) {
++		int bytes_to_receive = expected_size - bytes_buffered;
+ 		int retval = read_socket(sockfd, ((char *)vpi) + bytes_buffered, bytes_to_receive);
+ 		if (retval < 0) {
+ #ifdef _WIN32
+@@ -226,6 +236,23 @@ static int jtag_vpi_tms_seq(const uint8_t *bits, int nb_bits)
  	struct vpi_cmd vpi;
  	int nb_bytes;
  
@@ -57,7 +71,8 @@ index fac27b306..ca351a146 100644
 +	/* In cJTAG mode, encode TMS transitions using OScan1 SF0 (TMS on rising edge).
 +	 * Use TDI=1 as a don't-care to avoid unintended data shifts. */
 +	if (jtag_vpi_cjtag_mode) {
-+    LOG_DEBUG("INSIDE cJTAG mode branch, calling oscan1_sf0_encode for %d bits", nb_bits);
++		LOG_DEBUG("INSIDE cJTAG mode branch, calling oscan1_sf0_encode for %d bits", nb_bits);
++
 +		for (int i = 0; i < nb_bits; i++) {
 +			uint8_t tms = (bits[i / 8] >> (i % 8)) & 0x1;
 +			uint8_t dummy_tdo = 0;
@@ -72,7 +87,7 @@ index fac27b306..ca351a146 100644
  	memset(&vpi, 0, sizeof(struct vpi_cmd));
  	nb_bytes = DIV_ROUND_UP(nb_bits, 8);
  
-@@ -291,6 +314,28 @@ static int jtag_vpi_state_move(enum tap_state state)
+@@ -291,6 +318,28 @@ static int jtag_vpi_state_move(enum tap_state state)
  
  static int jtag_vpi_queue_tdi_xfer(uint8_t *bits, int nb_bits, int tap_shift)
  {
@@ -101,7 +116,7 @@ index fac27b306..ca351a146 100644
  	struct vpi_cmd vpi;
  	int nb_bytes = DIV_ROUND_UP(nb_bits, 8);
  
-@@ -562,6 +607,16 @@ static int jtag_vpi_init(void)
+@@ -562,6 +611,16 @@ static int jtag_vpi_init(void)
  
  	LOG_INFO("jtag_vpi: Connection to %s : %u successful", server_address, server_port);
  
@@ -118,7 +133,7 @@ index fac27b306..ca351a146 100644
  	return ERROR_OK;
  }
  
-@@ -589,6 +644,12 @@ static int jtag_vpi_quit(void)
+@@ -589,6 +648,12 @@ static int jtag_vpi_quit(void)
  	return ERROR_OK;
  }
  
@@ -131,7 +146,7 @@ index fac27b306..ca351a146 100644
  COMMAND_HANDLER(jtag_vpi_set_port)
  {
  	if (CMD_ARGC == 0)
-@@ -645,6 +706,34 @@ static const struct command_registration jtag_vpi_subcommand_handlers[] = {
+@@ -645,6 +710,34 @@ static const struct command_registration jtag_vpi_subcommand_handlers[] = {
  			"before OpenOCD exits (default: off)",
  		.usage = "<on|off>",
  	},
@@ -166,7 +181,7 @@ index fac27b306..ca351a146 100644
  	COMMAND_REGISTRATION_DONE
  };
  
-@@ -664,6 +753,95 @@ static struct jtag_interface jtag_vpi_interface = {
+@@ -664,6 +757,100 @@ static struct jtag_interface jtag_vpi_interface = {
  	.execute_queue = jtag_vpi_execute_queue,
  };
  
@@ -189,6 +204,11 @@ index fac27b306..ca351a146 100644
 +	vpi.buffer_out[0] = (tckc & 0x01) | ((tmsc & 0x01) << 1);
 +
 +	retval = jtag_vpi_send_cmd(&vpi);
++
++	if (retval != ERROR_OK)
++		return retval;
++
++	retval = jtag_vpi_receive_cmd(&vpi);
 +
 +	if (retval == ERROR_OK) {
 +		/* Store TDO bit from TMSC response */
