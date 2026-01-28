@@ -35,19 +35,24 @@ class TestHarness {
 
 ## Test Suite Organization
 
-The 123 tests are organized into 11 comprehensive categories:
+The 123 tests are organized into 12 comprehensive categories:
 
 ### Category Breakdown
-1. **Basic Functionality** (16 tests) - Core protocol operations
-2. **Error Recovery & Robustness** (20 tests) - Error handling, glitches, timing edge cases
-3. **Systematic Boundary Testing** (25 tests) - Counter saturation, toggle counts, deselection
-4. **Synchronizer & Edge Detection** (3 tests) - Timing characteristics
-5. **Signal Integrity & Output Verification** (4 tests) - Output signal validation
-6. **Escape Sequence Edge Cases** (4 tests) - Zero toggles, odd counts, saturation
-7. **Packet Boundary & State Transitions** (4 tests) - State machine validation
-8. **TAP-Specific Scenarios** (8 tests) - Deep JTAG TAP testing
-9. **Multi-Cycle & Performance** (6 tests) - Sustained operations, stress testing
-10. **Protocol Compliance** (11 tests) - IEEE 1149.7 specification adherence
+1. **Basic Functionality** (18 tests) - Core protocol operations (includes 4-5 toggle deselection)
+2. **Enhanced Testing** (5 tests) - Timing boundaries, TAP states, long operations
+3. **Error Recovery & Malformed Input** (4 tests) - OAC errors, incomplete escapes
+4. **Glitch Rejection & Noise** (4 tests) - Short pulses, glitches, slow clocks
+5. **Timing Edge Cases** (4 tests) - Pulse width, setup/hold, resets
+6. **Reset & Recovery** (6 tests) - nTRST handling, timeouts, state recovery
+7. **TAP Operations** (2 tests) - BYPASS, IDCODE operations
+8. **Systematic Boundary Testing** (25 tests) - Counter saturation, toggle counts, all states
+9. **Synchronizer & Edge Detection** (3 tests) - 2-stage sync, edge detection
+10. **Signal Integrity & Output Verification** (4 tests) - Output signal validation
+11. **Escape Sequence, Packet Boundary & Performance** (28 tests) - Comprehensive coverage
+12. **RISC-V Debug Module** (20 tests) - Complete DTM, DMI, and debug register testing
+
+## Complete Test List
+12. **RISC-V Debug Module** (20 tests) - Complete DTM, DMI, debug registers
 11. **RISC-V Debug Module** (20 tests) - Complete DTM, DMI, and debug register testing
 
 ## Complete Test List
@@ -164,107 +169,92 @@ The 123 tests are organized into 11 comprehensive categories:
 | 55 | `oac_partial_then_timeout` | Incomplete OAC handling |
 | 56 | `realistic_debug_session` | Full debug workflow simulation |
 | 57 | `openocd_command_sequence` | OpenOCD-like command patterns |
-| 56 | `all_state_transitions` | Valid state transition coverage |
-| 57 | `invalid_state_transitions` | Error state handling |
-| 58 | `tckc_jitter` | Clock jitter tolerance |
-| 59 | `tmsc_setup_hold_violations` | Timing margin testing |
-| 60 | `power_on_sequence` | Cold start behavior |
-| 61 | `10000_online_offline_cycles` | Extended stress test |
-| 62 | `random_input_fuzzing` | Random input robustness |
-| 63 | `all_tdi_tms_tdo_combinations` | Complete signal combinations |
-| 64 | `tap_all_16_states_individually` | Individual TAP state testing |
-| 65 | `tap_illegal_transitions` | Invalid TAP transitions |
-| 66 | `tap_instruction_register_values` | Multiple IR values |
+| 58 | `all_state_transitions` | Valid state transition coverage |
+| 59 | `invalid_state_transitions` | Error state handling |
+| 60 | `tckc_jitter` | Clock jitter tolerance |
+| 61 | `tmsc_setup_hold_violations` | Timing margin testing |
+| 62 | `power_on_sequence` | Cold start behavior |
+| 63 | `10000_online_offline_cycles` | Extended stress test |
+| 64 | `random_input_fuzzing` | Random input robustness |
+| 65 | `all_tdi_tms_tdo_combinations` | Complete signal combinations |
+| 66 | `tap_all_16_states_individually` | Individual TAP state testing |
+| 67 | `tap_illegal_transitions` | Invalid TAP transitions |
+| 68 | `tap_instruction_register_values` | Multiple IR values |
 
-### 5. Synchronizer & Edge Detection (Tests 67-69)
-
-| # | Test Name | Purpose |
-|---|-----------|---------|
-| 67 | `synchronizer_two_cycle_delay` | 2-cycle synchronizer validation |
-| 68 | `edge_detection_minimum_pulse` | Minimum pulse width testing |
-| 69 | `back_to_back_tckc_edges` | Rapid TCKC toggling |
-
-### 6. Signal Integrity & Output Verification (Tests 70-73)
+### 9. Synchronizer & Edge Detection (Tests 69-71)
 
 | # | Test Name | Purpose |
 |---|-----------|---------|
-| 70 | `nsp_signal_in_all_states` | nSP output verification (OFFLINE=1, OSCAN1=0) |
-| 71 | `tck_pulse_characteristics` | TCK timing validation |
-| 72 | `tmsc_oen_timing_all_positions` | TMSC_OEN transitions at bit boundaries |
-| 73 | `tdi_tms_hold_between_packets` | Output signal stability |
+| 69 | `synchronizer_two_cycle_delay` | 2-cycle synchronizer validation |
+| 70 | `edge_detection_minimum_pulse` | Minimum pulse width testing |
+| 71 | `back_to_back_tckc_edges` | Rapid TCKC toggling |
 
-### 7. Escape Sequence Edge Cases (Tests 74-77)
-
-| # | Test Name | Purpose |
-|---|-----------|---------|
-| 74 | `escape_with_zero_toggles` | 0-toggle handling |
-| 75 | `escape_with_odd_toggle_counts` | 1, 3, 9, 11, 13 toggle tests |
-| 76 | `maximum_toggle_count` | 30+ toggles (counter saturation) |
-| 77 | `escape_toggle_exactly_at_boundaries` | 4, 5, 6, 7, 8 toggle precision |
-
-### 8. Packet Boundary & State Transitions (Tests 78-81)
+### 10. Signal Integrity & Output Verification (Tests 72-75)
 
 | # | Test Name | Purpose |
 |---|-----------|---------|
-| 78 | `bit_pos_wraparound` | bit_pos: 0→1→2→0 cycle verification |
-| 79 | `oscan1_without_tdo_readback` | Packets without TDO capture |
-| 80 | `zero_delay_between_packets` | Back-to-back packet handling |
-| 81 | `packet_interrupted_at_each_bit` | Mid-packet escape sequences |
+| 72 | `nsp_signal_in_all_states` | nSP output verification (OFFLINE=1, OSCAN1=0) |
+| 73 | `tck_pulse_characteristics` | TCK timing validation |
+| 74 | `tmsc_oen_timing_all_positions` | TMSC_OEN transitions at bit boundaries |
+| 75 | `tdi_tms_hold_between_packets` | Output signal stability |
 
-### 9. TAP-Specific Scenarios (Tests 82-88)
-
-| # | Test Name | Purpose |
-|---|-----------|---------|
-| 82 | `tap_bypass_data_integrity` | BYPASS register functional test |
-| 83 | `tap_ir_capture_value` | IR capture pattern verification |
-| 84 | `tap_dr_capture_value` | DR capture behavior |
-| 85 | `tap_pause_states_extended` | Extended PAUSE-DR/IR (100 cycles) |
-| 86 | `sustained_shift_without_exit` | 500-bit continuous shift |
-| 87 | `alternating_ir_dr_scans` | Rapid IR/DR switching |
-| 88 | `back_to_back_idcode_reads` | 10 consecutive IDCODE reads |
-
-### 10. Multi-Cycle & Performance (Tests 89-94)
+### 11. Escape Sequence, Packet Boundary & Performance (Tests 76-103)
 
 | # | Test Name | Purpose |
 |---|-----------|---------|
-| 89 | `ntrst_pulse_widths` | Various nTRST pulse widths (1, 2, 5, 10, 50) |
-| 90 | `ntrst_at_each_bit_position` | nTRST during bit 0, 1, 2 |
-| 91 | `software_reset_via_tap` | TAP reset via TMS=1 (5x) |
-| 92 | `maximum_packet_rate` | 100 packets at maximum speed |
-| 93 | `minimum_system_clock_ratio` | System clock adequacy verification |
-| 94 | `asymmetric_tckc_duty_cycle` | 10% vs 90% duty cycle tolerance |
+| 76 | `escape_with_zero_toggles` | 0-toggle handling |
+| 77 | `escape_with_odd_toggle_counts` | 1, 3, 9, 11, 13 toggle tests |
+| 78 | `maximum_toggle_count` | 30+ toggles (counter saturation) |
+| 79 | `escape_toggle_exactly_at_boundaries` | 4, 5, 6, 7, 8 toggle precision |
+| 80 | `bit_pos_wraparound` | bit_pos: 0→1→2→0 cycle verification |
+| 81 | `oscan1_without_tdo_readback` | Packets without TDO capture |
+| 82 | `zero_delay_between_packets` | Back-to-back packet handling |
+| 83 | `packet_interrupted_at_each_bit` | Mid-packet escape sequences |
+| 84 | `tap_bypass_data_integrity` | BYPASS register functional test |
+| 85 | `tap_ir_capture_value` | IR capture pattern verification |
+| 86 | `tap_dr_capture_value` | DR capture behavior |
+| 87 | `tap_pause_states_extended` | Extended PAUSE-DR/IR (100 cycles) |
+| 88 | `sustained_shift_without_exit` | 500-bit continuous shift |
+| 89 | `alternating_ir_dr_scans` | Rapid IR/DR switching |
+| 90 | `back_to_back_idcode_reads` | 10 consecutive IDCODE reads |
+| 91 | `ntrst_pulse_widths` | Various nTRST pulse widths (1, 2, 5, 10, 50) |
+| 92 | `ntrst_at_each_bit_position` | nTRST during bit 0, 1, 2 |
+| 93 | `software_reset_via_tap` | TAP reset via TMS=1 (5x) |
+| 94 | `maximum_packet_rate` | 100 packets at maximum speed |
+| 95 | `minimum_system_clock_ratio` | System clock adequacy verification |
+| 96 | `asymmetric_tckc_duty_cycle` | 10% vs 90% duty cycle tolerance |
+| 97 | `all_zeros_data_pattern` | All-zero data integrity |
+| 98 | `all_ones_data_pattern` | All-one data integrity |
+| 99 | `walking_ones_pattern` | Walking 1s pattern |
+| 100 | `walking_zeros_pattern` | Walking 0s pattern |
+| 101 | `ieee1149_7_selection_sequence` | Proper activation sequence |
+| 102 | `oac_ec_cp_field_values` | OAC field validation |
+| 103 | `oscan1_format_compliance` | 3-bit packet format adherence |
 
-### 11. Data Patterns, Protocol Compliance & RISC-V Debug (Tests 95-123)
+### 12. RISC-V Debug Module (Tests 104-123)
 
 | # | Test Name | Purpose |
 |---|-----------|---------|
-| 95 | `all_zeros_data_pattern` | Shift 32 zeros through DR |
-| 96 | `all_ones_data_pattern` | Shift 32 ones through DR |
-| 97 | `walking_ones_pattern` | Walking 1s pattern |
-| 98 | `walking_zeros_pattern` | Walking 0s pattern |
-| 99 | `ieee1149_7_selection_sequence` | IEEE spec compliance (6-7 toggles) |
-| 100 | `oac_ec_cp_field_values` | OAC/EC/CP field validation |
-| 101 | `oscan1_format_compliance` | 3-bit packet format verification |
-| 102 | `dtmcs_register_read` | RISC-V DTMCS register access |
-| 103 | `dtmcs_register_format` | DTMCS register field validation |
-| 104 | `dmi_register_access` | RISC-V DMI register operations |
-| 105 | `debug_module_ir_scan` | IR scan with instruction readback |
-| 106 | `dmi_write_dmcontrol` | DMI write to dmcontrol register |
-| 107 | `dmi_read_after_write` | Write-then-read sequence validation |
-| 108 | `dmi_hartinfo_register` | Read hartinfo register (0x16) |
-| 109 | `dmi_invalid_address` | Invalid DMI address handling |
-| 110 | `dtmcs_dmistat_field` | DTMCS dmistat error reporting |
-| 111 | `sequential_dmi_reads` | Multiple DMI reads without IR change |
-| 112 | `rapid_dtmcs_dmi_switching` | Rapid instruction switching |
-| 113 | `dmi_41bit_boundary_test` | 41-bit DMI register full width test |
-| 114 | `complete_riscv_debug_init` | Full IDCODE→DTMCS→DMI→dmstatus flow |
-| 115 | `dmcontrol_reset_bit` | dmcontrol.dmactive field test |
-| 116 | `dmstatus_halt_flags` | anyhalted/allhalted flag validation |
-| 117 | `dmstatus_reset_flags` | anyhavereset/allhavereset validation |
-| 118 | `dmi_back_to_back_operations` | Operations without RUN_TEST_IDLE |
-| 119 | `mixed_idcode_dtmcs_dmi_sequence` | Interleaved register access |
-| 120 | `debug_module_all_registers` | Read all debug registers |
-| 121 | `dmi_stress_test_100_operations` | 100 DMI operations stress test |
+| 104 | `dtmcs_register_read` | RISC-V DTMCS register access |
+| 105 | `dtmcs_register_format` | DTMCS register field validation |
+| 106 | `dmi_register_access` | RISC-V DMI register operations |
+| 107 | `debug_module_ir_scan` | IR scan with instruction readback |
+| 108 | `dmi_write_dmcontrol` | DMI write to dmcontrol register |
+| 109 | `dmi_read_after_write` | Write-then-read sequence validation |
+| 110 | `dmi_hartinfo_register` | Read hartinfo register (0x16) |
+| 111 | `dmi_invalid_address` | Invalid DMI address handling |
+| 112 | `dtmcs_dmistat_field` | DTMCS dmistat error reporting |
+| 113 | `sequential_dmi_reads` | Multiple DMI reads without IR change |
+| 114 | `rapid_dtmcs_dmi_switching` | Rapid instruction switching |
+| 115 | `dmi_41bit_boundary_test` | 41-bit DMI register full width test |
+| 116 | `complete_riscv_debug_init` | Full IDCODE→DTMCS→DMI→dmstatus flow |
+| 117 | `dmcontrol_reset_bit` | dmcontrol.dmactive field test |
+| 118 | `dmstatus_halt_flags` | anyhalted/allhalted flag validation |
+| 119 | `dmstatus_reset_flags` | anyhavereset/allhavereset validation |
+| 120 | `dmi_back_to_back_operations` | Operations without RUN_TEST_IDLE |
+| 121 | `mixed_idcode_dtmcs_dmi_sequence` | Interleaved register access |
+| 122 | `debug_module_all_registers` | Read all debug registers |
+| 123 | `dmi_stress_test_100_operations` | 100 DMI operations stress test |
 
 ## Running Tests
 
@@ -304,123 +294,19 @@ cJTAG Bridge Automated Test Suite
 Running test: 01. reset_state ... PASS
 Running test: 02. escape_sequence_online_6_edges ... PASS
 Running test: 03. escape_sequence_reset_8_edges ... PASS
-Running test: 04. oac_validation_valid ... PASS
-Running test: 05. oac_validation_invalid ... PASS
-Running test: 06. oscan1_packet_transmission ... PASS
-Running test: 07. tck_generation ... PASS
-Running test: 08. tmsc_bidirectional ... PASS
-Running test: 09. jtag_tap_idcode ... PASS
-Running test: 10. multiple_oscan1_packets ... PASS
-Running test: 11. edge_ambiguity_7_edges ... PASS
-Running test: 12. edge_ambiguity_9_edges ... PASS
-Running test: 13. deselection_from_oscan1 ... PASS
-Running test: 14. deselection_oscan1_alt ... PASS
-Running test: 15. ntrst_hardware_reset ... PASS
+...
 Running test: 16. deselection_4_toggles_from_oscan1 ... PASS
 Running test: 17. deselection_5_toggles_from_oscan1 ... PASS
 Running test: 18. stress_test_repeated_online_offline ... PASS
-Running test: 19. tckc_high_19_vs_20_cycles ... PASS
-Running test: 20. all_tdi_tms_combinations ... PASS
-Running test: 21. tap_state_machine_full_path ... PASS
-Running test: 22. long_data_shift_128_bits ... PASS
-Running test: 23. rapid_escape_sequences_100x ... PASS
-Running test: 24. oac_single_bit_errors ... PASS
-Running test: 25. incomplete_escape_5_toggles ... PASS
-Running test: 26. escape_during_oscan1_packet ... PASS
-Running test: 27. oac_wrong_sequence ... PASS
-Running test: 28. short_tckc_pulse_rejection ... PASS
-Running test: 29. tmsc_glitches_during_packet ... PASS
-Running test: 30. double_escape_sequences ... PASS
-Running test: 31. very_slow_tckc_cycles ... PASS
-Running test: 32. minimum_tckc_pulse_width ... PASS
-Running test: 33. tmsc_change_during_tckc_edge ... PASS
-Running test: 34. ntrst_during_oac_reception ... PASS
-Running test: 35. ntrst_during_escape_sequence ... PASS
-Running test: 36. multiple_ntrst_pulses ... PASS
-Running test: 37. recovery_after_invalid_state ... PASS
-Running test: 38. online_act_timeout ... PASS
-Running test: 39. repeated_oac_attempts ... PASS
-Running test: 40. partial_oscan1_packet ... PASS
-Running test: 41. tap_instruction_scan_full ... PASS
-Running test: 42. bypass_register ... PASS
-Running test: 43. idcode_multiple_reads ... PASS
-Running test: 44. all_escape_toggle_counts_0_to_15 ... PASS
-Running test: 45. tckc_high_counter_saturation ... PASS
-Running test: 46. tmsc_toggle_count_saturation ... PASS
-Running test: 47. oscan1_all_tdo_values ... PASS
-Running test: 48. oscan1_bit_position_tracking ... PASS
-Running test: 49. continuous_oscan1_packets_1000x ... PASS
+...
 Running test: 50. deselection_escape_4_toggles ... PASS
 Running test: 51. deselection_escape_5_toggles ... PASS
 Running test: 52. deselection_from_offline ... PASS
-Running test: 53. oac_with_long_delays_between_bits ... PASS
-Running test: 54. oac_immediate_after_escape ... PASS
-Running test: 55. oac_partial_then_timeout ... PASS
-Running test: 56. realistic_debug_session ... PASS
-Running test: 57. openocd_command_sequence ... PASS
-Running test: 58. all_state_transitions ... PASS
-Running test: 59. invalid_state_transitions ... PASS
-Running test: 60. tckc_jitter ... PASS
-Running test: 61. tmsc_setup_hold_violations ... PASS
-Running test: 62. power_on_sequence ... PASS
-Running test: 63. 10000_online_offline_cycles ... PASS
-Running test: 64. random_input_fuzzing ... PASS
-Running test: 65. all_tdi_tms_tdo_combinations ... PASS
-Running test: 66. tap_all_16_states_individually ... PASS
-Running test: 67. tap_illegal_transitions ... PASS
-Running test: 68. tap_instruction_register_values ... PASS
-Running test: 69. synchronizer_two_cycle_delay ... PASS
-Running test: 70. edge_detection_minimum_pulse ... PASS
-Running test: 71. back_to_back_tckc_edges ... PASS
-Running test: 72. nsp_signal_in_all_states ... PASS
-Running test: 73. tck_pulse_characteristics ... PASS
-Running test: 74. tmsc_oen_timing_all_positions ... PASS
-Running test: 75. tdi_tms_hold_between_packets ... PASS
-Running test: 76. escape_with_zero_toggles ... PASS
-Running test: 77. escape_with_odd_toggle_counts ... PASS
-Running test: 78. maximum_toggle_count ... PASS
-Running test: 79. escape_toggle_exactly_at_boundaries ... PASS
-Running test: 80. bit_pos_wraparound ... PASS
-Running test: 81. oscan1_without_tdo_readback ... PASS
-Running test: 82. zero_delay_between_packets ... PASS
-Running test: 83. packet_interrupted_at_each_bit ... PASS
-Running test: 84. tap_bypass_data_integrity ... PASS
-Running test: 85. tap_ir_capture_value ... PASS
-Running test: 86. tap_dr_capture_value ... PASS
-Running test: 87. tap_pause_states_extended ... PASS
-Running test: 88. sustained_shift_without_exit ... PASS
-Running test: 89. alternating_ir_dr_scans ... PASS
-Running test: 90. back_to_back_idcode_reads ... PASS
-Running test: 91. ntrst_pulse_widths ... PASS
-Running test: 92. ntrst_at_each_bit_position ... PASS
-Running test: 93. software_reset_via_tap ... PASS
-Running test: 94. maximum_packet_rate ... PASS
-Running test: 95. minimum_system_clock_ratio ... PASS
-Running test: 96. asymmetric_tckc_duty_cycle ... PASS
-Running test: 97. all_zeros_data_pattern ... PASS
-Running test: 98. all_ones_data_pattern ... PASS
-Running test: 99. walking_ones_pattern ... PASS
-Running test: 100. walking_zeros_pattern ... PASS
+...
 Running test: 101. ieee1149_7_selection_sequence ... PASS
 Running test: 102. oac_ec_cp_field_values ... PASS
 Running test: 103. oscan1_format_compliance ... PASS
-Running test: 104. dtmcs_register_read ... PASS
-Running test: 105. dtmcs_register_format ... PASS
-Running test: 106. dmi_register_access ... PASS
-Running test: 107. debug_module_ir_scan ... PASS
-Running test: 108. dmi_write_dmcontrol ... PASS
-Running test: 109. dmi_read_after_write ... PASS
-Running test: 110. dmi_hartinfo_register ... PASS
-Running test: 111. dmi_invalid_address ... PASS
-Running test: 112. dtmcs_dmistat_field ... PASS
-Running test: 113. sequential_dmi_reads ... PASS
-Running test: 114. rapid_dtmcs_dmi_switching ... PASS
-Running test: 115. dmi_41bit_boundary_test ... PASS
-Running test: 116. complete_riscv_debug_init ... PASS
-Running test: 117. dmcontrol_reset_bit ... PASS
-Running test: 118. dmstatus_halt_flags ... PASS
-Running test: 119. dmstatus_reset_flags ... PASS
-Running test: 120. dmi_back_to_back_operations ... PASS
+...
 Running test: 121. mixed_idcode_dtmcs_dmi_sequence ... PASS
 Running test: 122. debug_module_all_registers ... PASS
 Running test: 123. dmi_stress_test_100_operations ... PASS
