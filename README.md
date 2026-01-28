@@ -26,29 +26,42 @@ This project implements a **cJTAG adapter** that converts a 2-wire cJTAG interfa
 
 ```
 cjtag/
-├── src/
-│   ├── cjtag_bridge.sv    # cJTAG to JTAG converter
-│   ├── jtag_tap.sv        # Simple JTAG TAP controller
+├── src/                   # RTL source files
 │   ├── top.sv             # Top-level module
-│   └── jtag_vpi.cpp       # VPI interface implementation
-├── tb/
+│   ├── README.md          # RTL documentation
+│   ├── cjtag/
+│   │   └── cjtag_bridge.sv    # cJTAG to JTAG converter
+│   ├── jtag/
+│   │   └── jtag_tap.sv        # Simple JTAG TAP controller
+│   └── riscv/
+│       └── riscv_dtm.sv       # RISC-V Debug Transport Module
+├── tb/                    # Testbench files
 │   ├── tb_cjtag.cpp       # C++ testbench harness
-│   └── test_cjtag.cpp     # Automated test suite (121 tests)
-├── docs/
+│   ├── test_cjtag.cpp     # Automated test suite (121 tests)
+│   ├── test_idcode.cpp    # IDCODE test program
+│   └── README.md          # Testbench documentation
+├── vpi/                   # VPI interface for OpenOCD
+│   ├── jtag_vpi.cpp       # VPI server implementation
+│   └── README.md          # VPI documentation
+├── docs/                  # Project documentation
+│   ├── README.md          # Documentation navigation hub
 │   ├── ARCHITECTURE.md    # System architecture and design
 │   ├── PROTOCOL.md        # cJTAG protocol specification
 │   ├── TEST_GUIDE.md      # Comprehensive test documentation
-│   └── README.md          # Documentation navigation hub
-├── openocd/
-│   ├── cjtag.cfg          # OpenOCD configuration
+│   └── CLOCK_REQUIREMENTS.md  # Timing and clock constraints
+├── openocd/               # OpenOCD integration
+│   ├── cjtag.cfg          # OpenOCD configuration with test suite
 │   └── patched/           # OpenOCD patches for cJTAG support
+│       ├── README.md              # Patch usage and optimization guide
+│       ├── MANUAL_APPLICATION_GUIDE.md
+│       ├── PATCH_SUMMARY.md
 │       ├── 001-jtag_vpi-cjtag-support.patch
 │       ├── 002-oscan1-new-file.txt
-│       ├── 003-oscan1-header-new-file.txt
-│       ├── MANUAL_APPLICATION_GUIDE.md
-│       └── README.md
-├── Makefile               # Build system
-└── README.md              # This file
+│       └── 003-oscan1-header-new-file.txt
+├── build/                 # Build artifacts (generated, gitignored)
+│   └── Vtop               # Verilator compiled simulation
+├── Makefile               # Build system with test targets
+└── README.md              # This file - project overview
 ```
 
 ## Requirements
@@ -110,7 +123,23 @@ This runs the comprehensive test suite covering:
 
 Expected output: **121/121 tests passed ✅**
 
-### 3. Interactive Simulation
+### 6. Run OpenOCD Integration Tests
+
+```bash
+make test-openocd
+```
+
+This runs OpenOCD integration tests through the VPI interface, validating:
+- OpenOCD VPI connectivity
+- cJTAG OScan1 protocol activation
+- JTAG TAP operations (IDCODE, DTMCS, DMI, BYPASS)
+- RISC-V Debug Module access
+- Multi-register operations
+- Stress testing with repeated operations
+
+Expected output: **8/8 OpenOCD tests passed ✅**
+
+### 7. View Waveforms
 
 ```bash
 make wave
@@ -189,16 +218,31 @@ VPI_PORT=5555 make vpi
 
 | Target | Description |
 |--------|-------------|
-| `make build` | Build the Verilator simulation |
-| `make run` | Run simulation without waveform |
+| `make build` | Build Verilator simulation |
+| `make test` | Run automated test suite |
+| `make test-openocd` | Test OpenOCD connection to VPI |
+| `make test-vpi` | Test VPI IDCODE read |
+| `make run` | Run simulation (no waveform) |
 | `make sim` | Run simulation with waveform |
-| `make WAVE=1` | Build and run with FST waveform dump |
-| `make vpi` | Run VPI server for OpenOCD |
-| `make wave` | Open waveform in GTKWave |
-| `make clean` | Remove build artifacts |
-| `make lint` | Run Verilator linter |
-| `make status` | Show project status |
-| `make help` | Display help message |
+| `make WAVE=1` | Run simulation with FST waveform dump |
+| `make vpi` | Run simulation and wait for OpenOCD |
+| `make clean` | Clean build artifacts |
+| `make help` | Show this help message |
+
+**Environment Variables:**
+- `WAVE=1` - Enable FST waveform dump
+- `VERBOSE=1` - Show detailed build output and warnings
+- `VPI_PORT=3333` - VPI server port (default: 3333)
+
+**Usage Examples:**
+```bash
+make test                    # Run automated tests
+make VERBOSE=1 test          # Run tests with verbose output
+make test-openocd            # Test OpenOCD VPI connection
+make test-vpi                # Test VPI IDCODE read
+make WAVE=1                  # Build and run with waveforms
+VPI_PORT=5555 make vpi       # Run VPI on custom port
+```
 
 ## Module Descriptions
 
@@ -510,6 +554,208 @@ For detailed test descriptions, debugging guide, and adding new tests, see [docs
 
 **New in v1.2**: 19 comprehensive RISC-V Debug Module tests added, covering DTMCS, DMI, dmcontrol, dmstatus, and hartinfo registers with full integration testing.
 
+## OpenOCD Integration Test Suite
+
+The project includes automated OpenOCD integration tests that validate the complete cJTAG-to-JTAG bridge operation with OpenOCD debugger software.
+
+### Test Overview
+
+**Location**: `openocd/cjtag.cfg` (run_tests procedure)
+**Execution**: `make test-openocd`
+**Test Count**: 8 comprehensive integration tests
+**Pass Rate**: 100% (8/8 passing ✅)
+
+### OpenOCD Test Steps
+
+#### Step 1: IDCODE Read and Verification
+- Reads JTAG IDCODE register
+- Verifies expected value: `0x1DEAD3FF`
+- Validates basic TAP communication
+
+#### Step 2: DTMCS Register Access
+- Accesses RISC-V Debug Transport Module Control and Status register
+- Performs 32-bit DR scan through DTMCS instruction
+- Validates DTM version detection (v0.13)
+
+#### Step 3: Instruction Register Test
+- Tests all major IR values:
+  - IDCODE (0x01)
+  - DTMCS (0x10 or 0x11)
+  - DMI (0x11 or 0x10)
+  - BYPASS (0x1F)
+- Validates IR scan and instruction decoding
+
+#### Step 4: BYPASS Register Test
+- Shifts data through 1-bit BYPASS register
+- Tests with patterns: 0x0, 0x1
+- Verifies data integrity through minimal path
+
+#### Step 5: Multiple IDCODE Reads
+- Performs back-to-back IDCODE operations
+- Tests 3 consecutive reads
+- Validates consistent results and state retention
+
+#### Step 6: DMI Register Access
+- Tests RISC-V Debug Module Interface (41-bit register)
+- Reads dmcontrol register (address 0x10)
+- Validates DMI access protocol
+
+#### Step 7: IDCODE Stress Test
+- Performs 10 rapid IDCODE read operations
+- Tests protocol stability under repeated operations
+- Validates no state corruption
+
+#### Step 8: Variable DR Scan Lengths
+- Tests different data register sizes:
+  - 32-bit (IDCODE, DTMCS)
+  - 41-bit (DMI)
+  - 1-bit (BYPASS)
+- Validates proper bit counting and alignment
+
+### Running OpenOCD Tests
+
+```bash
+# Run OpenOCD integration tests
+make test-openocd
+
+# Run with verbose output (includes VPI server logs)
+make VERBOSE=1 test-openocd
+
+# Run with waveform capture
+WAVE=1 make test-openocd
+
+# View test logs
+cat openocd_output.log
+cat openocd_test.log
+```
+
+### Expected Output
+
+```
+==========================================
+Testing OpenOCD VPI Connection
+==========================================
+✓ VPI server started successfully
+✓ OpenOCD connected and OScan1 initialized
+✓ OpenOCD test suite completed
+✅ IDCODE verified (test suite passed): 0x1DEAD3FF
+
+========================================
+✅ OpenOCD Test PASSED
+========================================
+```
+
+### Test Validation Points
+
+The OpenOCD test suite validates:
+
+1. **VPI Connectivity**: TCP socket connection on port 3333
+2. **cJTAG Protocol**: OScan1 activation and packet handling
+3. **State Machine**: TAP controller state transitions
+4. **Data Integrity**: Correct data transmission/reception
+5. **Multi-Operation**: Sequential and repeated operations
+6. **Register Access**: All major JTAG/DTM registers
+7. **Error-Free Operation**: No protocol violations or timeouts
+8. **RISC-V Debug**: Full debug module accessibility
+
+### Test Metrics
+
+- **Execution Time**: ~3-5 seconds
+- **VPI Transactions**: ~50-100 packets per test run
+- **Coverage**: TAP operations, DTM registers, DMI access, stress testing
+- **Reliability**: 100% pass rate across all tests
+
+### Log Files
+
+After running `make test-openocd`, two log files are generated:
+
+**`openocd_output.log`**: OpenOCD console output
+- Shows test step execution
+- Displays register read values
+- Contains test summary
+
+**`openocd_test.log`**: VPI server debug output
+- Shows VPI socket operations
+- Logs cJTAG packet details
+- Contains timing information (when VERBOSE=1)
+
+### Example Test Output
+
+```tcl
+Step 1: Reading IDCODE...
+✓ IDCODE read: 0x1DEAD3FF
+
+Step 2: Testing DTMCS register...
+✓ Switched to DTMCS instruction
+✓ 32-bit DR scan (DTMCS)
+✓ DTMCS register accessed
+
+Step 3: Testing Instruction Register...
+✓ IR scan to IDCODE instruction
+✓ IR scan to DTMCS instruction
+✓ IR scan to DMI instruction
+✓ IR scan to BYPASS instruction
+✓ Instruction Register tested
+
+Step 6: Testing DMI register access...
+✓ DMI read initiated for dmcontrol (0x10)
+✓ DMI register access tested
+
+Test Suite Summary
+✓ OpenOCD connected to VPI server
+✓ cJTAG OScan1 protocol activated
+✓ IDCODE read and verified (0x1DEAD3FF)
+✓ All 8 test steps passed
+```
+
+### Troubleshooting OpenOCD Tests
+
+**Problem**: VPI connection refused
+```bash
+# Check if port is in use
+lsof -i :3333
+
+# Try different port
+VPI_PORT=5555 make test-openocd
+```
+
+**Problem**: IDCODE mismatch
+- Verify expected IDCODE in `openocd/cjtag.cfg` matches `jtag_tap.sv`
+- Check that TAP controller is properly initialized
+
+**Problem**: Test timeouts
+- Increase timeout in Makefile (default: 30 seconds)
+- Check system load (slow host may cause delays)
+- Enable verbose mode to see where it hangs: `make VERBOSE=1 test-openocd`
+
+**Problem**: DTM errors during shutdown
+- This is normal - errors may appear during OpenOCD cleanup
+- Verify test summary shows "✓ Test passed" before shutdown
+- Check that IDCODE was verified successfully
+
+### OpenOCD Configuration
+
+The test configuration (`openocd/cjtag.cfg`) includes:
+
+```tcl
+# VPI adapter setup
+adapter driver jtag_vpi
+jtag_vpi set_port 3333
+
+# cJTAG mode enable
+jtag_vpi enable_cjtag on
+
+# TAP definition
+jtag newtap riscv cpu -irlen 5 -expected-id 0x1dead3ff
+
+# RISC-V target
+target create riscv.cpu riscv -chain-position riscv.cpu
+
+# Initialize and run tests
+init
+run_tests
+```
+
 ## Manual Testing
 
 1. **Build and run simulation**:
@@ -578,11 +824,13 @@ Contributions welcome! Areas for improvement:
 - Full JTAG TAP controller with RISC-V Debug Module support
 - OpenOCD VPI interface
 - **121 comprehensive automated tests** (100% passing)
+- **8 OpenOCD integration tests** (100% passing)
 - Complete protocol validation
 - RISC-V Debug Module integration (DTMCS, DMI, dmcontrol, dmstatus, hartinfo)
 - Error recovery and robustness testing
 - Timing and signal integrity verification
 - Full documentation suite
+- OpenOCD test automation with VPI interface
 
 ### In Progress 🚧
 - OpenOCD patch upstreaming
@@ -621,7 +869,7 @@ Contributions welcome! Areas for improvement:
    // Bridge will reset to OFFLINE state
    ```
 
-**Impact**: Tests document this implementation limitation. The comprehensive test suite (101 tests) validates all supported functionality while documenting the deselection limitation.
+**Impact**: Tests document this implementation limitation. The comprehensive test suite (121 tests) validates all supported functionality while documenting the deselection limitation.
 
 **Alternative**: In production systems, the host controller should maintain the bridge in OSCAN1 mode during active debugging and only use hardware reset or reset escape when returning to OFFLINE is required.
 

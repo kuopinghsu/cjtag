@@ -7,8 +7,8 @@ This directory contains the testbench infrastructure for verifying the cJTAG Bri
 ```
 tb/
 ├── README.md           # This file
-├── test_cjtag.cpp     # Main test suite (105 comprehensive tests)
-├── test_idcode.cpp    # Original IDCODE test example
+├── test_cjtag.cpp     # Main test suite (121 comprehensive tests)
+├── test_idcode.cpp    # VPI IDCODE verification test
 └── tb_cjtag.cpp       # Verilator testbench wrapper (deprecated)
 ```
 
@@ -44,12 +44,13 @@ tb/
 - Comprehensive coverage of all protocol states and edge cases
 
 ### test_idcode.cpp
-Original simple test example demonstrating IDCODE register readout. Useful as a minimal example for understanding basic test structure.
+VPI IDCODE verification test that exercises the VPI interface to read and verify the JTAG IDCODE register directly. Used by `make test-vpi`.
 
 **Purpose:**
-- Educational reference
-- Minimal working example
-- Legacy compatibility
+- VPI interface validation
+- IDCODE register verification
+- Integration test for VPI server
+- Waveform generation example
 
 ### tb_cjtag.cpp
 Legacy Verilator testbench wrapper. Now deprecated in favor of the integrated test suite in `test_cjtag.cpp`.

@@ -736,9 +736,19 @@ IOBUF u_tmsc_iobuf (
 
 ## Verification and Testing
 
-### Test Suite
+### Test Suite Overview
 
-The project includes comprehensive automated tests in `tb/test_cjtag.cpp`:
+The project includes three comprehensive test suites:
+
+1. **Verilator Unit/Integration Tests**: 121 tests in `tb/test_cjtag.cpp`
+2. **OpenOCD Integration Tests**: 8 tests via VPI interface
+3. **VPI IDCODE Test**: Direct IDCODE verification
+
+**Combined Status**: 130 total tests, 100% passing ✅
+
+### Verilator Test Suite (121 Tests)
+
+Sample tests from `tb/test_cjtag.cpp`:
 
 | Test # | Name | Description | Status |
 |--------|------|-------------|--------|
@@ -788,10 +798,10 @@ cJTAG Bridge Automated Test Suite
 Running test: 01. reset_state ... PASS
 Running test: 02. escape_sequence_online_6_edges ... PASS
 ...
-Running test: 16. stress_test_repeated_online_offline ... PASS
+Running test: 121. dmi_stress_test_100_operations ... PASS
 
 ========================================
-Test Results: 16 tests passed
+Test Results: 121 tests passed
 ========================================
 ✅ ALL TESTS PASSED!
 ```
@@ -821,7 +831,9 @@ Key signals to observe in `cjtag.fst`:
 | Target | Description |
 |--------|-------------|
 | `make` or `make build` | Build Verilator simulation |
-| `make test` | Run automated test suite |
+| `make test` | Run 121 Verilator automated tests |
+| `make test-vpi` | Run VPI IDCODE verification test |
+| `make test-openocd` | Run 8 OpenOCD integration tests |
 | `make test-trace` | Run tests with waveform generation |
 | `make run` | Run simulation (no waveform) |
 | `make sim` | Run simulation with FST waveform |

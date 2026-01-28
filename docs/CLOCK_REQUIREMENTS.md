@@ -44,7 +44,7 @@ The cJTAG bridge uses the system clock to sample asynchronous TCKC and TMSC inpu
 **tb_cjtag.cpp** includes compile-time assertion:
 ```cpp
 const int sys_clocks_per_tckc = 5;  // TCKC toggle every 5 system clocks
-static_assert(sys_clocks_per_tckc * 2 >= 6, 
+static_assert(sys_clocks_per_tckc * 2 >= 6,
               "Clock ratio violation: TCKC period must be >= 6 system clocks");
 ```
 
@@ -66,7 +66,7 @@ edge_det: __________________|‾|___  (detected after 3 clocks)
 ```
 TCKC:     ‾‾‾‾‾‾‾‾‾‾|_____  (held high ≥ 20 system clocks)
 TMSC:     |‾|_|‾|_|‾|_      (6 toggles during TCKC high)
-          
+
           ← 20+ sys clocks →
 ```
 
@@ -78,6 +78,11 @@ If you need to change the TCKC frequency:
 2. **Verify constraint**: Ensure `sys_clocks_per_tckc * 2 >= 6`
 3. **Rebuild**: Compile-time assertion will verify the constraint
 4. **Test**: Run full test suite to verify functionality
+   ```bash
+   make test              # 121 Verilator tests
+   make test-vpi          # VPI IDCODE test
+   make test-openocd      # 8 OpenOCD integration tests
+   ```
 
 ### Example Configurations
 

@@ -14,7 +14,9 @@ This directory contains comprehensive documentation for the cJTAG Bridge project
 
 ### 🧪 Testing & Verification
 **→ [TEST_GUIDE.md](TEST_GUIDE.md)**
-- **101 comprehensive tests** (100% passing ✅)
+- **121 Verilator tests** (100% passing ✅)
+- **8 OpenOCD integration tests** (100% passing ✅)
+- **VPI IDCODE verification test** (passing ✅)
 - Complete test catalog organized in 11 categories
 - Coverage analysis (protocol, timing, TAP, error recovery)
 - Debugging guide and troubleshooting
@@ -22,9 +24,11 @@ This directory contains comprehensive documentation for the cJTAG Bridge project
 - Performance metrics and best practices
 
 **Test Statistics:**
-- Total Tests: 101
-- Test File: 3,127 lines
-- Execution Time: ~5 seconds
+- Verilator Tests: 121 (unit & integration)
+- OpenOCD Tests: 8 (system integration)
+- VPI Tests: 1 (IDCODE verification)
+- Test File: 4,273 lines
+- Execution Time: ~5 seconds (Verilator), ~3-5 seconds (OpenOCD)
 - Pass Rate: 100%
 
 ### 🏗️ Architecture & Design
@@ -53,10 +57,13 @@ This directory contains comprehensive documentation for the cJTAG Bridge project
 - IEEE 1149.7 OScan1 format implementation
 - Full 2-wire to 4-wire bridge (TCKC/TMSC → TCK/TMS/TDI/TDO)
 - JTAG TAP controller (all 16 states)
+- RISC-V Debug Transport Module (DTM, DMI, DTMCS)
 - Escape sequence detection (all toggle counts)
 - OAC validation (Online Activation Code)
 - OpenOCD VPI interface integration
-- **101 comprehensive automated tests**
+- **121 Verilator automated tests**
+- **8 OpenOCD integration tests**
+- **VPI IDCODE verification test**
 - Complete protocol validation
 - Error recovery and robustness testing
 - Timing and signal integrity verification
@@ -112,9 +119,13 @@ Check [ARCHITECTURE.md](ARCHITECTURE.md) for system design:
 ### 4. Run the Tests
 Follow [TEST_GUIDE.md](TEST_GUIDE.md) to validate:
 ```bash
-make test
+make test              # 121 Verilator tests
+make test-vpi          # VPI IDCODE test
+make test-openocd      # 8 OpenOCD integration tests
 ```
-Expected: **101/101 tests passed ✅**
+Expected: **121/121 Verilator tests passed ✅**
+Expected: **8/8 OpenOCD tests passed ✅**
+Expected: **VPI IDCODE test passed ✅**
 
 ## Common Use Cases
 
@@ -215,7 +226,7 @@ Expected: **101/101 tests passed ✅**
 ---
 
 **Documentation Version**: 2026.01
-**Last Updated**: January 25, 2026
-**Project Status**: ✅ Production Ready (101/101 tests passing)
+**Last Updated**: January 28, 2026
+**Project Status**: ✅ Production Ready (121 Verilator + 8 OpenOCD + 1 VPI tests passing)
 
 For the latest information, visit the main [project README](../README.md).
