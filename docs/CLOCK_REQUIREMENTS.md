@@ -79,7 +79,7 @@ If you need to change the TCKC frequency:
 3. **Rebuild**: Compile-time assertion will verify the constraint
 4. **Test**: Run full test suite to verify functionality
    ```bash
-   make test              # 121 Verilator tests
+   make test              # 123 Verilator tests
    make test-vpi          # VPI IDCODE test
    make test-openocd      # 8 OpenOCD integration tests
    ```

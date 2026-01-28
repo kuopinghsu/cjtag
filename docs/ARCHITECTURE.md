@@ -740,13 +740,13 @@ IOBUF u_tmsc_iobuf (
 
 The project includes three comprehensive test suites:
 
-1. **Verilator Unit/Integration Tests**: 121 tests in `tb/test_cjtag.cpp`
+1. **Verilator Unit/Integration Tests**: 123 tests in `tb/test_cjtag.cpp`
 2. **OpenOCD Integration Tests**: 8 tests via VPI interface
 3. **VPI IDCODE Test**: Direct IDCODE verification
 
-**Combined Status**: 130 total tests, 100% passing ✅
+**Combined Status**: 132 total tests, 100% passing ✅
 
-### Verilator Test Suite (121 Tests)
+### Verilator Test Suite (123 Tests)
 
 Sample tests from `tb/test_cjtag.cpp`:
 
@@ -767,7 +767,9 @@ Sample tests from `tb/test_cjtag.cpp`:
 | 13 | deselection_from_oscan1 | 10-toggle reset from OSCAN1 | ✅ PASS |
 | 14 | deselection_oscan1_alt | 8-toggle minimum reset | ✅ PASS |
 | 15 | ntrst_hardware_reset | Hardware reset functionality | ✅ PASS |
-| 16 | stress_test_repeated_online_offline | Multiple activation cycles | ✅ PASS |
+| 16 | deselection_4_toggles_from_oscan1 | 4-toggle deselection from OSCAN1 | ✅ PASS |
+| 17 | deselection_5_toggles_from_oscan1 | 5-toggle deselection from OSCAN1 | ✅ PASS |
+| 18 | stress_test_repeated_online_offline | Multiple activation cycles | ✅ PASS |
 
 ### Running Tests
 

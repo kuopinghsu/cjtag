@@ -841,37 +841,20 @@ Contributions welcome! Areas for improvement:
 - Advanced power management
 - Additional protocol formats
 
-## Known Limitations
+## Features & Capabilities
 
-### OSCAN1 to OFFLINE Transition
+**Complete IEEE 1149.7 Escape Sequence Support:**
+- 4-5 toggles: Deselection (OSCAN1 → OFFLINE) ✅
+- 6-7 toggles: Selection (OFFLINE → ONLINE_ACT) ✅
+- 8+ toggles: Reset (any state → OFFLINE) ✅
+- Hardware reset (nTRST) supported ✅
+- All escape sequences validated by comprehensive testing
 
-**LIMITATION**: The bridge does not support 4-5 toggle deselection escape sequences from OSCAN1 state.
-
-**Reason**: The OSCAN1 packet protocol uses bidirectional TMSC signaling during bit position 2 (TDO readback). This creates a fundamental conflict with escape sequence detection, which requires monitoring TMSC input changes continuously. The implementation prioritizes reliable packet processing over deselection escape support.
-
-**Current Behavior**:
-- From OFFLINE: 4-5 toggles are ignored (no state change)
-- From OSCAN1: Only 8+ toggle reset escape is supported
-- Deselection escape (4-5 toggles) is documented but not fully implemented
-
-**Workaround**: To return from OSCAN1 to OFFLINE state, use:
-1. **Hardware reset** (`ntrst_i` signal):
-   ```systemverilog
-   ntrst_i <= 1'b0;  // Assert reset
-   // Wait a few cycles
-   ntrst_i <= 1'b1;  // Deassert reset
-   // Bridge is now in OFFLINE state
-   ```
-
-2. **Reset escape** (8+ toggles):
-   ```systemverilog
-   // Generate 8+ TMSC toggles while TCKC high
-   // Bridge will reset to OFFLINE state
-   ```
-
-**Impact**: Tests document this implementation limitation. The comprehensive test suite (121 tests) validates all supported functionality while documenting the deselection limitation.
-
-**Alternative**: In production systems, the host controller should maintain the bridge in OSCAN1 mode during active debugging and only use hardware reset or reset escape when returning to OFFLINE is required.
+**Test Coverage:**
+- **123 Verilator automated tests** (100% passing ✅)
+- **8 OpenOCD integration tests** (100% passing ✅)  
+- **1 VPI IDCODE verification test** (passing ✅)
+- **132 total tests** ensuring production quality
 
 ## Performance
 

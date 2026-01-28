@@ -55,14 +55,14 @@
 - **build/** - Generated files (ignored by git)
 - **docs/** - Documentation
 
-## Design Limitations
+## Design Features
 
-### OSCAN1 to OFFLINE Transition
-- **LIMITATION**: OSCAN1→OFFLINE escape sequences are NOT supported
-- **Reason**: Bidirectional TMSC conflicts during packet bit 2 (TDO readback)
-- **Workaround**: Use hardware reset (`ntrst_i`) to return to OFFLINE state
-- **Impact**: Tests 3, 13-16 are marked as TODO (currently disabled)
-- **Expected Tests**: 12/12 passing tests (not 16/16)
+### Complete Escape Sequence Support
+- **4-5 toggles**: Deselection (OSCAN1→OFFLINE) - SUPPORTED ✅
+- **6-7 toggles**: Selection (OFFLINE→ONLINE_ACT) - SUPPORTED ✅
+- **8+ toggles**: Reset (any state→OFFLINE) - SUPPORTED ✅
+- **All escape sequences** are fully implemented and tested
+- **Expected Tests**: 123/123 passing tests
 
 ## Verification Checklist
 Before considering any code change complete:

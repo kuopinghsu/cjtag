@@ -14,7 +14,7 @@ This directory contains comprehensive documentation for the cJTAG Bridge project
 
 ### 🧪 Testing & Verification
 **→ [TEST_GUIDE.md](TEST_GUIDE.md)**
-- **121 Verilator tests** (100% passing ✅)
+- **123 Verilator tests** (100% passing ✅)
 - **8 OpenOCD integration tests** (100% passing ✅)
 - **VPI IDCODE verification test** (passing ✅)
 - Complete test catalog organized in 11 categories
@@ -24,10 +24,10 @@ This directory contains comprehensive documentation for the cJTAG Bridge project
 - Performance metrics and best practices
 
 **Test Statistics:**
-- Verilator Tests: 121 (unit & integration)
+- Verilator Tests: 123 (unit & integration)
 - OpenOCD Tests: 8 (system integration)
 - VPI Tests: 1 (IDCODE verification)
-- Test File: 4,273 lines
+- Test File: 4,292 lines
 - Execution Time: ~5 seconds (Verilator), ~3-5 seconds (OpenOCD)
 - Pass Rate: 100%
 
@@ -61,7 +61,7 @@ This directory contains comprehensive documentation for the cJTAG Bridge project
 - Escape sequence detection (all toggle counts)
 - OAC validation (Online Activation Code)
 - OpenOCD VPI interface integration
-- **121 Verilator automated tests**
+- **123 Verilator automated tests**
 - **8 OpenOCD integration tests**
 - **VPI IDCODE verification test**
 - Complete protocol validation
@@ -121,11 +121,11 @@ Check [ARCHITECTURE.md](ARCHITECTURE.md) for system design:
 ### 4. Run the Tests
 Follow [TEST_GUIDE.md](TEST_GUIDE.md) to validate:
 ```bash
-make test              # 121 Verilator tests
+make test              # 123 Verilator tests
 make test-vpi          # VPI IDCODE test
 make test-openocd      # 8 OpenOCD integration tests
 ```
-Expected: **121/121 Verilator tests passed ✅**
+Expected: **123/123 Verilator tests passed ✅**
 Expected: **8/8 OpenOCD tests passed ✅**
 Expected: **VPI IDCODE test passed ✅**
 
@@ -229,6 +229,6 @@ Expected: **VPI IDCODE test passed ✅**
 
 **Documentation Version**: 2026.01
 **Last Updated**: January 28, 2026
-**Project Status**: ✅ Production Ready (121 Verilator + 8 OpenOCD + 1 VPI tests passing)
+**Project Status**: ✅ Production Ready (123 Verilator + 8 OpenOCD + 1 VPI tests passing)
 
 For the latest information, visit the main [project README](../README.md).

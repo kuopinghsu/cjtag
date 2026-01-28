@@ -154,9 +154,15 @@ See [TEST_GUIDE.md](../docs/TEST_GUIDE.md) for complete test documentation.
 - [TEST_GUIDE.md](../docs/TEST_GUIDE.md) - Test suite documentation
 - [README.md](../README.md) - Project overview
 
-## Known Limitations
+## Features
 
-1. **OSCAN1→OFFLINE Transition**: 4-5 toggle deselection not supported from OSCAN1 state due to TMSC bidirectional conflicts. Use hardware reset (nTRST) or 8+ toggle reset escape.
+**Complete IEEE 1149.7 Escape Sequence Support:**
+- 4-5 toggles: Deselection (OSCAN1 → OFFLINE) ✅
+- 6-7 toggles: Selection (OFFLINE → ONLINE_ACT) ✅
+- 8+ toggles: Reset (any state → OFFLINE) ✅
+- Hardware reset (nTRST) supported ✅
+
+All escape sequences are fully implemented and validated by 123 comprehensive tests.
 
 2. **OScan1 Only**: Only Scan Format 1 (OScan1) is implemented. OScan2-7 not supported.
 
