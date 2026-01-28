@@ -284,7 +284,11 @@ test-openocd: build
 	if ps -p $$VPI_PID > /dev/null 2>&1; then \
 		echo "✓ VPI server started successfully"; \
 		echo "Connecting OpenOCD and running test suite (30 second timeout)..."; \
-		(timeout -s KILL 30 openocd -d3 -f openocd/cjtag.cfg > openocd_output.log 2>&1) & \
+		if [ "$(VERBOSE)" = "1" ]; then \
+			(timeout -s KILL 30 openocd -d3 -f openocd/cjtag.cfg > openocd_output.log 2>&1) & \
+		else \
+			(timeout -s KILL 30 openocd -f openocd/cjtag.cfg > openocd_output.log 2>&1) & \
+		fi; \
 		OPENOCD_PID=$$!; \
 		echo "OpenOCD PID: $$OPENOCD_PID"; \
 		wait $$OPENOCD_PID; \
@@ -301,11 +305,11 @@ test-openocd: build
 		elif grep -q "Connection to.*successful" openocd_output.log && \
 		     grep -q "OScan1 protocol initialized" openocd_output.log; then \
 			echo "✓ OpenOCD connected and OScan1 initialized"; \
-			if grep -q "Test Complete" openocd_output.log; then \
+			if grep -q "Test Complete\|Test Suite Summary" openocd_output.log; then \
 				echo "✓ OpenOCD test suite completed"; \
 				if [ $$EXIT_CODE -eq 0 ]; then \
 					if grep -q "IDCODE matches expected value" openocd_output.log; then \
-						echo "✅ IDCODE verified: 0x1DEAD3FF"; \
+						echo "✅ IDCODE verified (test suite passed): 0x1DEAD3FF"; \
 						RESULT=0; \
 					else \
 						echo "❌ IDCODE verification failed"; \

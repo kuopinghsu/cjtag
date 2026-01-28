@@ -95,6 +95,7 @@ module cjtag_bridge (
     logic        tms_int;
     logic        tdi_int;
     logic        tmsc_oen_int;          // TMSC output enable (registered)
+    logic        tdo_sampled;           // TDO sampled when TCK is high
 
     // =========================================================================
     // Input Synchronizers - 2-stage for metastability protection
@@ -325,19 +326,28 @@ module cjtag_bridge (
                 // OSCAN1: Active mode with 3-bit scan packets
                 // =============================================================
                 ST_OSCAN1: begin
+                    `ifdef VERBOSE
+                    if (tckc_negedge)
+                        $display("[%0t] OSCAN1 negedge: toggles=%0d, bit_pos=%0d",
+                                 $time, tmsc_toggle_count, bit_pos);
+                    if (tckc_posedge)
+                        $display("[%0t] OSCAN1 posedge: toggles=%0d, bit_pos=%0d",
+                                 $time, tmsc_toggle_count, bit_pos);
+                    `endif
+
                     // Sample on TCKC falling edge
                     if (tckc_negedge) begin
                         // Check for reset escape (8+ toggles while TCKC was high)
                         if (tmsc_toggle_count >= 5'd8) begin
+                            `ifdef VERBOSE
+                            $display("[%0t] *** OSCAN1 -> OFFLINE *** (reset escape detected, toggles=%0d >= 8)",
+                                     $time, tmsc_toggle_count);
+                            `endif
+
                             state <= ST_OFFLINE;
                             oac_shift <= 3'd0;
                             oac_count <= 4'd0;
                             bit_pos <= 2'd0;
-
-                            `ifdef VERBOSE
-                            $display("[%0t] OSCAN1 -> OFFLINE (reset escape, %0d toggles)",
-                                     $time, tmsc_toggle_count);
-                            `endif
                         end
                         // Normal operation: sample TMSC for current bit position
                         else begin
@@ -375,7 +385,13 @@ module cjtag_bridge (
             tms_int         <= 1'b1;
             tdi_int         <= 1'b0;
             tmsc_oen_int    <= 1'b1;  // Default to input mode
+            tdo_sampled     <= 1'b0;
         end else begin
+            // Sample TDO when TCK is high (after TAP has updated it)
+            if (tck_int && state == ST_OSCAN1 && bit_pos == 2'd2) begin
+                tdo_sampled <= tdo_i;
+            end
+
             case (state)
                 ST_OFFLINE, ST_ONLINE_ACT: begin
                     // Keep JTAG interface idle
@@ -413,6 +429,7 @@ module cjtag_bridge (
                                 tms_int <= tmsc_sampled;
                                 tck_int <= 1'b1;       // Generate TCK pulse
                                 tmsc_oen_int <= 1'b0;  // Output mode for TDO
+                                // TDO will be sampled on next clock cycle after TCK rises
 
                                 `ifdef VERBOSE
                                 $display("[%0t] OSCAN1 posedge: bit_pos=2, TCK high, tms_int=%b, driving TDO=%b",
@@ -453,8 +470,8 @@ module cjtag_bridge (
     assign tms_o = tms_int;
     assign tdi_o = tdi_int;
 
-    // TMSC output: Drive TDO during third bit of OScan1 packet
-    assign tmsc_o = (state == ST_OSCAN1 && bit_pos == 2'd2) ? tdo_i : 1'b0;
+    // TMSC output: Drive sampled TDO during third bit of OScan1 packet
+    assign tmsc_o = (state == ST_OSCAN1 && bit_pos == 2'd2) ? tdo_sampled : 1'b0;
 
     // TMSC output enable: Registered, changes on rising edge
     assign tmsc_oen = tmsc_oen_int;

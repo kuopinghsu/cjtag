@@ -140,11 +140,11 @@ public:
     bool process_commands(Vtop* top) {
         if (!connected) return true;
 
-        // Check if data available
+        // Check if data available with a very short timeout
         fd_set read_fds;
         struct timeval tv;
         tv.tv_sec = 0;
-        tv.tv_usec = 0;
+        tv.tv_usec = 100;  // 100 microseconds to allow data to arrive
 
         FD_ZERO(&read_fds);
         FD_SET(client_fd, &read_fds);
@@ -159,15 +159,21 @@ public:
         #endif
 
         if (select_result <= 0) {
-            return true;  // No data available
+            return true;  // No data available or timeout
         }
 
         // Read VPI command structure (OpenOCD format)
-        // Structure: cmd(4) + buffer_out(4096) + buffer_in(4096) + length(4) + nb_bits(4)
+        // Optimized protocol: OpenOCD sends variable sizes:
+        //   - cJTAG mode: 525 bytes (cmd + buffer_out[512] + buffer_in[1] + length + nb_bits)
+        //   - JTAG mode:  1036 bytes (full struct)
+        // Strategy: Read at least minimum size (525 bytes), accept more for full JTAG mode
         struct vpi_cmd vpi;
         memset(&vpi, 0, sizeof(vpi));
 
-        ssize_t n = recv(client_fd, &vpi, sizeof(vpi), MSG_WAITALL);
+        // Read minimum optimized size (525 bytes for cJTAG)
+        // Use MSG_WAITALL to block until we get at least this much
+        const size_t min_size = 4 + 512 + 1 + 4 + 4;  // 525 bytes minimum
+        ssize_t n = recv(client_fd, &vpi, min_size, MSG_WAITALL);
         if (n <= 0) {
             printf("VPI: Client disconnected (recv returned %zd)\n", n);
             close(client_fd);
@@ -176,8 +182,14 @@ public:
             return true;
         }
 
-        if (n != sizeof(vpi)) {
-            printf("VPI: WARNING: Partial read! Expected %zu bytes, got %zd bytes\n", sizeof(vpi), n);
+        // Check if there's more data for full JTAG mode (total 1036 bytes)
+        if (n == min_size) {
+            // Got minimum size - check if more data is available for full struct
+            size_t remaining = sizeof(vpi) - min_size;
+            ssize_t extra = recv(client_fd, (char*)&vpi + min_size, remaining, MSG_DONTWAIT);
+            if (extra > 0) {
+                n += extra;
+            }
         }
 
         // Extract command (little-endian)
@@ -197,20 +209,20 @@ public:
         // Process commands
         switch (cmd) {
             case CMD_RESET: {
-                // Reset the JTAG TAP using ntrst (don't touch free-running tckc_i)
-                top->ntrst_i = 0;
-                top->eval();
-                // Hold reset for a few evals to ensure it propagates
-                for (int i = 0; i < 5; i++) {
-                    top->eval();
-                }
-                top->ntrst_i = 1;
-                top->eval();
+                #ifdef VERBOSE
+                printf("VPI: CMD_RESET (cJTAG mode - keeping bridge in OSCAN1)\n");
+                #endif
 
-                // Optimized response: send only header + actual data length
+                // In cJTAG mode, do NOT reset the cJTAG bridge
+                // The bridge must stay in OSCAN1 mode once activated
+                // OpenOCD's "TAP reset" is for the internal JTAG state machine only
+                // The cJTAG spec doesn't have a way to reset just the JTAG TAP
+                // without resetting the entire cJTAG bridge
+
+                // Just acknowledge the command without doing anything
                 memset(&vpi.buffer_in, 0, sizeof(vpi.buffer_in));
-                int response_size = 12 + vpi.length;  // 12 = sizeof(cmd+length+nb_bits)
-                send(client_fd, &vpi, response_size, 0);
+                send(client_fd, &vpi, sizeof(vpi), 0);
+
                 break;
             }
 
@@ -220,7 +232,9 @@ public:
                 // Note: This command is not well-supported in cJTAG mode
                 //       OpenOCD should use CMD_OSCAN1_RAW instead
 
+                #ifdef VERBOSE
                 printf("VPI: CMD_TMS_SEQ: %d TMS bits (WARNING: Use CMD_OSCAN1_RAW for cJTAG)\n", vpi.nb_bits);
+                #endif
 
                 // Send each TMS bit via TMSC with TCKC pulsing
                 for (int bit = 0; bit < vpi.nb_bits; bit++) {
@@ -240,11 +254,9 @@ public:
                 memset(&vpi.buffer_in, 0, sizeof(vpi.buffer_in));
                 vpi.buffer_in[0] = top->tmsc_o & 0x01;
 
-                // Optimized response: send only header + actual data length
-                int response_size = 12 + vpi.length;  // 12 = sizeof(cmd+length+nb_bits)
-                send(client_fd, &vpi, response_size, 0);
+                // Send full struct
+                send(client_fd, &vpi, sizeof(vpi), 0);
 
-                printf("VPI: CMD_TMS_SEQ completed\n");
                 break;
             }
 
@@ -255,10 +267,10 @@ public:
                 // OScan1 mode uses CMD_OSCAN1_RAW instead
                 printf("VPI: WARNING: CMD_SCAN_CHAIN not supported with free-running TCKC (use CMD_OSCAN1_RAW)\n");
 
-                // Optimized error response: send only header + actual data length
+                // Error response - send full struct
                 memset(&vpi.buffer_in, 0xFF, sizeof(vpi.buffer_in));
-                int response_size = 12 + vpi.length;  // 12 = sizeof(cmd+length+nb_bits)
-                send(client_fd, &vpi, response_size, 0);
+                send(client_fd, &vpi, sizeof(vpi), 0);
+
                 break;
             }
 
@@ -276,35 +288,46 @@ public:
                 uint8_t tckc = cmd_byte & 0x01;
                 uint8_t tmsc = (cmd_byte >> 1) & 0x01;
 
+                #ifdef VERBOSE
                 static int raw_cmd_count = 0;
                 raw_cmd_count++;
-                if (raw_cmd_count <= 30) {
-                    printf("[VPI] CMD_OSCAN1_RAW #%d: tckc=%d tmsc=%d\n",
-                           raw_cmd_count, tckc, tmsc);
-                }
+                printf("[VPI] CMD_OSCAN1_RAW #%d: tckc=%d tmsc=%d\n",
+                       raw_cmd_count, tckc, tmsc);
+                #endif
 
                 // Directly drive TCKC and TMSC from OpenOCD command
                 // No free-running - OpenOCD controls every edge
                 top->tckc_i = tckc;
                 top->tmsc_i = tmsc;
-                top->eval();
+
+                // Run multiple clock cycles to allow cJTAG bridge to process
+                // 1. Edge detection (2 cycles for synchronizer)
+                // 2. State machine update (1 cycle)
+                // 3. TCK pulse (1 cycle)
+                // 4. TDO sampling (1 cycle)
+                for (int i = 0; i < 10; i++) {
+                    top->clk_i = 0;
+                    top->eval();
+                    top->clk_i = 1;
+                    top->eval();
+                }
 
                 // Read TMSC output state and return in buffer_in[0]
                 vpi.buffer_in[0] = top->tmsc_o & 0x01;
 
-                // Optimized response for cJTAG: only send header (12 bytes) + data (1 byte)
-                // This is 77x faster than sending full ~1KB struct
-                int response_size = 12 + vpi.length;  // 12 = sizeof(cmd+length+nb_bits), length=1
-                send(client_fd, &vpi, response_size, 0);
+                // Send full struct (struct layout requires length/nb_bits at end)
+                send(client_fd, &vpi, sizeof(vpi), 0);
+
                 break;
             }
 
             default: {
                 printf("VPI: Unknown command: 0x%02x\n", cmd);
-                // Optimized error response: send only header + actual data length
+
+                // Error response - send full struct
                 memset(&vpi.buffer_in, 0xFF, sizeof(vpi.buffer_in));
-                int response_size = 12 + vpi.length;  // 12 = sizeof(cmd+length+nb_bits)
-                send(client_fd, &vpi, response_size, 0);
+                send(client_fd, &vpi, sizeof(vpi), 0);
+
                 break;
             }
         }

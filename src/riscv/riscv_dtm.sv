@@ -136,7 +136,12 @@ module riscv_dtm #(
             dmcontrol     <= DMCONTROL_RESET;
         end else if (capture_dr_i) begin
             case (ir_i)
-                IR_IDCODE:  idcode_shift <= IDCODE;
+                IR_IDCODE: begin
+                    idcode_shift <= IDCODE;
+                    `ifdef VERBOSE
+                    $display("[%0t] DTM: CAPTURE_DR IDCODE, loading %h", $time, IDCODE);
+                    `endif
+                end
                 IR_DTMCS:   dtmcs_shift  <= DTMCS_VALUE;
                 IR_DMI: begin
                     // Capture: Return data from previous operation
@@ -163,7 +168,13 @@ module riscv_dtm #(
             // Reset handled in capture_dr block
         end else if (shift_dr_i) begin
             case (ir_i)
-                IR_IDCODE:  idcode_shift  <= {tdi_i, idcode_shift[31:1]};
+                IR_IDCODE: begin
+                    idcode_shift  <= {tdi_i, idcode_shift[31:1]};
+                    `ifdef VERBOSE
+                    $display("[%0t] DTM: SHIFT_DR IDCODE, tdo=%b, idcode_shift=%h -> %h",
+                             $time, idcode_shift[0], idcode_shift, {tdi_i, idcode_shift[31:1]});
+                    `endif
+                end
                 IR_DTMCS:   dtmcs_shift   <= {tdi_i, dtmcs_shift[31:1]};
                 IR_DMI:     dmi_shift     <= {tdi_i, dmi_shift[40:1]};
                 IR_BYPASS:  bypass_shift  <= tdi_i;

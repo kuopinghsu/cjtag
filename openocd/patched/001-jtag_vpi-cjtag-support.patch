@@ -11,7 +11,7 @@ index 5216e5d77..e4bd89774 100644
  if VDEBUG
  DRIVERFILES += %D%/vdebug.c
 diff --git a/src/jtag/drivers/jtag_vpi.c b/src/jtag/drivers/jtag_vpi.c
-index fac27b306..edb353710 100644
+index fac27b306..0df1ecc5f 100644
 --- a/src/jtag/drivers/jtag_vpi.c
 +++ b/src/jtag/drivers/jtag_vpi.c
 @@ -23,6 +23,7 @@
@@ -49,6 +49,24 @@ index fac27b306..edb353710 100644
  	default:
  		return "<unknown>";
  	}
+@@ -126,7 +133,7 @@ static int jtag_vpi_send_cmd(struct vpi_cmd *vpi)
+ 	h_u32_to_le(vpi->nb_bits_buf, vpi->nb_bits);
+ 
+ retry_write:
+-	retval = write_socket(sockfd, vpi, sizeof(struct vpi_cmd));
++        retval = write_socket(sockfd, vpi, sizeof(struct vpi_cmd));
+ 
+ 	if (retval < 0) {
+ 		/* Account for the case when socket write is interrupted. */
+@@ -144,7 +151,7 @@ retry_write:
+ 		/* TODO: Clean way how adapter drivers can report fatal errors
+ 		   to upper layers of OpenOCD and let it perform an orderly shutdown? */
+ 		exit(-1);
+-	} else if (retval < (int)sizeof(struct vpi_cmd)) {
++        } else if (retval < (int)sizeof(struct vpi_cmd)) {
+ 		/* This means we could not send all data, which is most likely fatal
+ 		   for the jtag_vpi connection (the underlying TCP connection likely not
+ 		   usable anymore) */
 @@ -159,8 +166,11 @@ retry_write:
  static int jtag_vpi_receive_cmd(struct vpi_cmd *vpi)
  {
@@ -56,7 +74,7 @@ index fac27b306..edb353710 100644
 -	while (bytes_buffered < sizeof(struct vpi_cmd)) {
 -		int bytes_to_receive = sizeof(struct vpi_cmd) - bytes_buffered;
 +/* Backward compatible: optimize only for cJTAG */
-+	int expected_size = (jtag_vpi_cjtag_mode && vpi->length == 1) ? (12 + vpi->length) : sizeof(struct vpi_cmd);
++    unsigned int expected_size = sizeof(struct vpi_cmd);
 +
 +	while (bytes_buffered < expected_size) {
 +		int bytes_to_receive = expected_size - bytes_buffered;
