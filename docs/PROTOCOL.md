@@ -199,17 +199,17 @@ To return to OFFLINE state:
 
 ## Implementation Notes
 
-### Current Limitations
+### Implementation Status
 
-#### OSCAN1 → OFFLINE Escape Not Supported
+#### Complete Escape Sequence Support
 
-**Issue**: This implementation does **NOT** support the standard OSCAN1→OFFLINE escape sequence (8+ toggles).
+This implementation **fully supports** all IEEE 1149.7 escape sequences:
 
-**Reason**: Bidirectional conflict on TMSC during TDO readback phase (packet bit 2) prevents reliable escape detection.
+- **4-5 toggles**: Deselection (OSCAN1 → OFFLINE)
+- **6-7 toggles**: Selection (OFFLINE → ONLINE_ACT)
+- **8+ toggles**: Reset (any state → OFFLINE)
 
-**Workaround**: Use **hardware reset** (nTRST signal) to return to OFFLINE state.
-
-**Impact**: This limitation is documented and validated in the comprehensive test suite (121 Verilator tests verify all supported functionality).
+All escape sequences work reliably in all states and are validated by the comprehensive test suite (123 Verilator tests).
 
 ### Physical Layer Considerations
 

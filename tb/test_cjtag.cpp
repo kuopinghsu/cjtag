@@ -570,6 +570,66 @@ TEST_CASE(ntrst_hardware_reset) {
     tb.tick();
 }
 
+TEST_CASE(deselection_4_toggles_from_oscan1) {
+    // Test 4-toggle deselection escape from OSCAN1
+    // First go online
+    tb.send_escape_sequence(6);
+    tb.send_oac_sequence();
+
+    // Run system clock
+    for (int i = 0; i < 50; i++) {
+        tb.tick();
+    }
+
+    ASSERT_EQ(tb.dut->online_o, 1, "Should be online");
+
+    // Send some OSCAN1 packets to confirm we're in OSCAN1 state
+    tb.send_oscan1_packet(0, 0, nullptr);
+    tb.send_oscan1_packet(1, 1, nullptr);
+
+    ASSERT_EQ(tb.dut->online_o, 1, "Should still be online after packets");
+
+    // 4 toggles (deselection escape) should go offline
+    tb.send_escape_sequence(4);
+
+    // Run system clock
+    for (int i = 0; i < 50; i++) {
+        tb.tick();
+    }
+
+    ASSERT_EQ(tb.dut->online_o, 0, "4-toggle deselection should take bridge offline");
+}
+
+TEST_CASE(deselection_5_toggles_from_oscan1) {
+    // Test 5-toggle deselection escape from OSCAN1
+    // First go online
+    tb.send_escape_sequence(7);
+    tb.send_oac_sequence();
+
+    // Run system clock
+    for (int i = 0; i < 50; i++) {
+        tb.tick();
+    }
+
+    ASSERT_EQ(tb.dut->online_o, 1, "Should be online");
+
+    // Send some OSCAN1 packets to confirm we're in OSCAN1 state
+    tb.send_oscan1_packet(1, 0, nullptr);
+    tb.send_oscan1_packet(0, 1, nullptr);
+
+    ASSERT_EQ(tb.dut->online_o, 1, "Should still be online after packets");
+
+    // 5 toggles (deselection escape) should go offline
+    tb.send_escape_sequence(5);
+
+    // Run system clock
+    for (int i = 0; i < 50; i++) {
+        tb.tick();
+    }
+
+    ASSERT_EQ(tb.dut->online_o, 0, "5-toggle deselection should take bridge offline");
+}
+
 TEST_CASE(stress_test_repeated_online_offline) {
     for (int cycle = 0; cycle < 5; cycle++) {
         // Go online (6-7 toggles)
@@ -4103,6 +4163,8 @@ int main(int argc, char** argv) {
     RUN_TEST(deselection_from_oscan1);
     RUN_TEST(deselection_oscan1_alt);
     RUN_TEST(ntrst_hardware_reset);
+    RUN_TEST(deselection_4_toggles_from_oscan1);
+    RUN_TEST(deselection_5_toggles_from_oscan1);
     RUN_TEST(stress_test_repeated_online_offline);
 
     // Additional high-priority tests

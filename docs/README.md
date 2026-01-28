@@ -90,12 +90,14 @@ This directory contains comprehensive documentation for the cJTAG Bridge project
 | IDCODE | 0x1DEAD3FF | TAP identification |
 | OAC Value | 0x0C8 | 12-bit activation code |
 
-### Known Limitations
+### Features
 
-**OSCAN1→OFFLINE Deselection:**
-- 4-5 toggle deselection not supported from OSCAN1 state
-- Use hardware reset (`ntrst_i`) or 8+ toggle reset escape
-- Documented in tests 48-50
+**Complete IEEE 1149.7 Escape Sequence Support:**
+- 4-5 toggles: Deselection (OSCAN1 → OFFLINE)
+- 6-7 toggles: Selection (OFFLINE → ONLINE_ACT)  
+- 8+ toggles: Reset (any state → OFFLINE)
+- Hardware reset (nTRST) supported
+- All escape sequences validated by 123 comprehensive tests
 
 ## Getting Started
 

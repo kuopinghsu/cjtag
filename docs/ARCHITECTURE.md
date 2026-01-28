@@ -164,7 +164,7 @@ Using TCKC as the clock source made escape sequence detection impossible because
 **Solution Benefits:**
 - ✅ Full IEEE 1149.7 compliance
 - ✅ All escape sequences supported (selection, deselection, reset)
-- ✅ OSCAN1 → OFFLINE transitions work
+- ✅ OSCAN1 → OFFLINE transitions work (4-5 toggles deselection, 8+ toggles reset)
 - ✅ Single clock domain (synthesizable)
 - ✅ Better testability
 

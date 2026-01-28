@@ -337,8 +337,20 @@ module cjtag_bridge (
 
                     // Sample on TCKC falling edge
                     if (tckc_negedge) begin
+                        // Check for deselection escape (4-5 toggles while TCKC was high)
+                        if (tmsc_toggle_count >= 5'd4 && tmsc_toggle_count <= 5'd5) begin
+                            `ifdef VERBOSE
+                            $display("[%0t] *** OSCAN1 -> OFFLINE *** (deselection escape detected, toggles=%0d)",
+                                     $time, tmsc_toggle_count);
+                            `endif
+
+                            state <= ST_OFFLINE;
+                            oac_shift <= 3'd0;
+                            oac_count <= 4'd0;
+                            bit_pos <= 2'd0;
+                        end
                         // Check for reset escape (8+ toggles while TCKC was high)
-                        if (tmsc_toggle_count >= 5'd8) begin
+                        else if (tmsc_toggle_count >= 5'd8) begin
                             `ifdef VERBOSE
                             $display("[%0t] *** OSCAN1 -> OFFLINE *** (reset escape detected, toggles=%0d >= 8)",
                                      $time, tmsc_toggle_count);

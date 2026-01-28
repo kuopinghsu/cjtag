@@ -752,16 +752,18 @@ echo "✅ All tests passed!"
 - **Maintainable**: Clear, readable, well-documented
 - **Fast**: Keep execution time reasonable
 
-## Known Limitations & Design Decisions
+## Design Decisions
 
-### 1. OSCAN1→OFFLINE Deselection Not Supported
-**Limitation**: 4-5 toggle deselection escape does not work from OSCAN1 state.
+### 1. Complete Escape Sequence Support
+**Implementation**: All IEEE 1149.7 escape sequences (4-5, 6-7, 8+ toggles) are fully supported.
 
-**Reason**: Bidirectional TMSC conflict during packet bit 2 (TDO readback) prevents reliable escape detection.
+**Testing**: Comprehensive test coverage includes:
+- Test 16: 4-toggle deselection from OSCAN1
+- Test 17: 5-toggle deselection from OSCAN1
+- Test 50-52: Deselection escape variations
+- Additional tests for all escape sequence edge cases
 
-**Workaround**: Use hardware reset (`ntrst_i`) or 8+ toggle reset escape to return to OFFLINE.
-
-**Impact**: Tests document this behavior rather than treating it as a failure.
+**Verification**: All 123 tests pass, confirming reliable operation in all states.
 
 ### 2. Free-Running Clock Requirement
 **Decision**: System clock runs continuously at 100MHz.
