@@ -207,9 +207,10 @@ public:
                 top->ntrst_i = 1;
                 top->eval();
 
-                // Send full structure response (no data needed)
+                // Optimized response: send only header + actual data length
                 memset(&vpi.buffer_in, 0, sizeof(vpi.buffer_in));
-                send(client_fd, &vpi, sizeof(vpi), 0);
+                int response_size = 12 + vpi.length;  // 12 = sizeof(cmd+length+nb_bits)
+                send(client_fd, &vpi, response_size, 0);
                 break;
             }
 
@@ -238,7 +239,10 @@ public:
                 // Return TDO state (read from TMSC output)
                 memset(&vpi.buffer_in, 0, sizeof(vpi.buffer_in));
                 vpi.buffer_in[0] = top->tmsc_o & 0x01;
-                send(client_fd, &vpi, sizeof(vpi), 0);
+
+                // Optimized response: send only header + actual data length
+                int response_size = 12 + vpi.length;  // 12 = sizeof(cmd+length+nb_bits)
+                send(client_fd, &vpi, response_size, 0);
 
                 printf("VPI: CMD_TMS_SEQ completed\n");
                 break;
@@ -251,9 +255,10 @@ public:
                 // OScan1 mode uses CMD_OSCAN1_RAW instead
                 printf("VPI: WARNING: CMD_SCAN_CHAIN not supported with free-running TCKC (use CMD_OSCAN1_RAW)\n");
 
-                // Send error response
+                // Optimized error response: send only header + actual data length
                 memset(&vpi.buffer_in, 0xFF, sizeof(vpi.buffer_in));
-                send(client_fd, &vpi, sizeof(vpi), 0);
+                int response_size = 12 + vpi.length;  // 12 = sizeof(cmd+length+nb_bits)
+                send(client_fd, &vpi, response_size, 0);
                 break;
             }
 
@@ -296,9 +301,10 @@ public:
 
             default: {
                 printf("VPI: Unknown command: 0x%02x\n", cmd);
-                // Send full structure error response
+                // Optimized error response: send only header + actual data length
                 memset(&vpi.buffer_in, 0xFF, sizeof(vpi.buffer_in));
-                send(client_fd, &vpi, sizeof(vpi), 0);
+                int response_size = 12 + vpi.length;  // 12 = sizeof(cmd+length+nb_bits)
+                send(client_fd, &vpi, response_size, 0);
                 break;
             }
         }
