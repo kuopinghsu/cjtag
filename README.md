@@ -204,9 +204,7 @@ VPI_PORT=5555 make vpi
    ```
 
 2. **In another terminal, run OpenOCD**:
-   ```batest` | Run automated test suite |
-| `make test-trace` | Run tests with waveform trace |
-| `make sh
+   ```bash
    openocd -f openocd/cjtag.cfg
    ```
 
