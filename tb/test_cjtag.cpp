@@ -168,12 +168,30 @@ public:
     }
 
     void send_oac_sequence() {
-        // OAC = 0xB = 1011 binary = {1,1,0,1} (LSB first per IEEE 1149.7)
-        // Only send OAC bits, not EC/CP (not needed in test environment)
-        int bits[4] = {1, 1, 0, 1};  // OAC: 0xB = 1011 LSB first
+        // Full 12-bit activation packet per IEEE 1149.7:
+        // OAC (4 bits) + EC (4 bits) + CP (4 bits) - all LSB first
+        // OAC = 1100 (LSB first: 0,0,1,1)  - TAP.7 star-2 topology
+        // EC  = 1000 (LSB first: 0,0,0,1)  - Short format via RTI
+        // CP  = calculated parity (XOR of OAC and EC bit-wise)
 
+        int oac[4] = {0, 0, 1, 1};  // OAC: 1100 LSB first
+        int ec[4]  = {0, 0, 0, 1};  // EC: 1000 LSB first
+        int cp[4];                  // CP: calculated
+
+        // Calculate CP: CP[i] = OAC[i] XOR EC[i]
         for (int i = 0; i < 4; i++) {
-            tckc_cycle(bits[i]);
+            cp[i] = oac[i] ^ ec[i];
+        }
+
+        // Send all 12 bits: OAC + EC + CP
+        for (int i = 0; i < 4; i++) {
+            tckc_cycle(oac[i]);
+        }
+        for (int i = 0; i < 4; i++) {
+            tckc_cycle(ec[i]);
+        }
+        for (int i = 0; i < 4; i++) {
+            tckc_cycle(cp[i]);
         }
     }
 
@@ -886,12 +904,26 @@ TEST_CASE(oac_single_bit_errors) {
         // Go to ONLINE_ACT
         tb.send_escape_sequence(6);
 
-        // Send OAC with one bit flipped
-        int correct_bits[4] = {1, 1, 0, 1};  // OAC: 0xB = 1011 LSB first
+        // Send full 12-bit packet with one bit flipped in OAC field
+        int correct_oac[4] = {0, 0, 1, 1};  // OAC: 1100 LSB first
+        int ec[4]  = {0, 0, 0, 1};          // EC: 1000 LSB first
+        int cp[4];                          // CP: calculated
+
+        // Introduce error in OAC
+        int test_oac[4];
         for (int i = 0; i < 4; i++) {
-            int bit = (i == error_bit) ? !correct_bits[i] : correct_bits[i];
-            tb.tckc_cycle(bit);
+            test_oac[i] = (i == error_bit) ? !correct_oac[i] : correct_oac[i];
         }
+
+        // Calculate CP based on correct OAC (so CP will be correct even though OAC is wrong)
+        for (int i = 0; i < 4; i++) {
+            cp[i] = correct_oac[i] ^ ec[i];
+        }
+
+        // Send all 12 bits with error in OAC
+        for (int i = 0; i < 4; i++) tb.tckc_cycle(test_oac[i]);
+        for (int i = 0; i < 4; i++) tb.tckc_cycle(ec[i]);
+        for (int i = 0; i < 4; i++) tb.tckc_cycle(cp[i]);
 
         for (int i = 0; i < 50; i++) {
             tb.tick();
@@ -1103,13 +1135,35 @@ TEST_CASE(very_slow_tckc_cycles) {
     tb.dut->tckc_i = 0;
     for (int i = 0; i < 100; i++) tb.tick();
 
-    // Send OAC with slow timing
-    int oac_bits[4] = {1, 1, 0, 1};  // OAC: 0xB = 1011 LSB first (no EC/CP needed)
+    // Send full 12-bit activation packet with slow timing
+    int oac[4] = {0, 0, 1, 1};  // OAC: 1100 LSB first
+    int ec[4]  = {0, 0, 0, 1};  // EC: 1000 LSB first
+    int cp[4];                  // CP: calculated
+
+    // Calculate CP
+    for (int i = 0; i < 4; i++) {
+        cp[i] = oac[i] ^ ec[i];
+    }
+
+    // Send all 12 bits with slow timing
     for (int i = 0; i < 4; i++) {
         tb.dut->tckc_i = 1;
-        tb.dut->tmsc_i = oac_bits[i];
+        tb.dut->tmsc_i = oac[i];
         for (int j = 0; j < 50; j++) tb.tick();
-
+        tb.dut->tckc_i = 0;
+        for (int j = 0; j < 50; j++) tb.tick();
+    }
+    for (int i = 0; i < 4; i++) {
+        tb.dut->tckc_i = 1;
+        tb.dut->tmsc_i = ec[i];
+        for (int j = 0; j < 50; j++) tb.tick();
+        tb.dut->tckc_i = 0;
+        for (int j = 0; j < 50; j++) tb.tick();
+    }
+    for (int i = 0; i < 4; i++) {
+        tb.dut->tckc_i = 1;
+        tb.dut->tmsc_i = cp[i];
+        for (int j = 0; j < 50; j++) tb.tick();
         tb.dut->tckc_i = 0;
         for (int j = 0; j < 50; j++) tb.tick();
     }
@@ -1692,13 +1746,32 @@ TEST_CASE(oac_with_long_delays_between_bits) {
 
     tb.send_escape_sequence(6);
 
-    // Send OAC with 100+ cycle delays
-    int oac_bits[4] = {1, 1, 0, 1};  // OAC: 0xB = 1011 LSB first (no EC/CP)
+    // Send full 12-bit activation packet with 100+ cycle delays
+    int oac[4] = {0, 0, 1, 1};  // OAC: 1100 LSB first
+    int ec[4]  = {0, 0, 0, 1};  // EC: 1000 LSB first
+    int cp[4];                  // CP: calculated
+
+    for (int i = 0; i < 4; i++) cp[i] = oac[i] ^ ec[i];
+
+    // Send all 12 bits with long delays
     for (int i = 0; i < 4; i++) {
         tb.dut->tckc_i = 1;
-        tb.dut->tmsc_i = oac_bits[i];
+        tb.dut->tmsc_i = oac[i];
         for (int j = 0; j < 100; j++) tb.tick();
-
+        tb.dut->tckc_i = 0;
+        for (int j = 0; j < 100; j++) tb.tick();
+    }
+    for (int i = 0; i < 4; i++) {
+        tb.dut->tckc_i = 1;
+        tb.dut->tmsc_i = ec[i];
+        for (int j = 0; j < 100; j++) tb.tick();
+        tb.dut->tckc_i = 0;
+        for (int j = 0; j < 100; j++) tb.tick();
+    }
+    for (int i = 0; i < 4; i++) {
+        tb.dut->tckc_i = 1;
+        tb.dut->tmsc_i = cp[i];
+        for (int j = 0; j < 100; j++) tb.tick();
         tb.dut->tckc_i = 0;
         for (int j = 0; j < 100; j++) tb.tick();
     }
@@ -1721,21 +1794,21 @@ TEST_CASE(oac_immediate_after_escape) {
 }
 
 TEST_CASE(oac_partial_then_timeout) {
-    // Send 6 bits of OAC, then stop (incomplete)
+    // Send 6 bits of activation packet, then stop (incomplete)
 
     tb.send_escape_sequence(6);
 
-    // Send only 2 of 4 OAC bits (incomplete)
-    int oac_bits[4] = {1, 1, 0, 1};  // OAC: 0xB = 1011 LSB first
+    // Send only 2 of 12 activation bits (incomplete)
+    int oac[4] = {0, 0, 1, 1};  // OAC: 1100 LSB first
     for (int i = 0; i < 2; i++) {
-        tb.tckc_cycle(oac_bits[i]);
+        tb.tckc_cycle(oac[i]);
     }
 
-    // Wait without completing OAC
+    // Wait without completing activation packet
     for (int i = 0; i < 200; i++) tb.tick();
 
-    // Should not be online (incomplete OAC)
-    ASSERT_EQ(tb.dut->online_o, 0, "Incomplete OAC should not activate");
+    // Should not be online (incomplete packet)
+    ASSERT_EQ(tb.dut->online_o, 0, "Incomplete activation packet should not activate");
 }
 
 // =============================================================================
@@ -1910,16 +1983,32 @@ TEST_CASE(tmsc_setup_hold_violations) {
 
     tb.send_escape_sequence(6);
 
-    // Send OAC with TMSC changes at odd times
-    int oac_bits[4] = {1, 1, 0, 1};  // OAC: 0xB = 1011 LSB first
+    // Send full activation packet with TMSC changes at odd times
+    int oac[4] = {0, 0, 1, 1};  // OAC: 1100 LSB first
+    int ec[4]  = {0, 0, 0, 1};  // EC: 1000 LSB first
+    int cp[4];                  // CP: calculated
+
+    for (int i = 0; i < 4; i++) cp[i] = oac[i] ^ ec[i];
+
+    // Send all 12 bits with TMSC changes at odd times
     for (int i = 0; i < 4; i++) {
-        // Change TMSC same cycle as TCKC
-        tb.dut->tmsc_i = oac_bits[i];
+        tb.dut->tmsc_i = oac[i];
         tb.dut->tckc_i = 1;
-        tb.tick();
-
         for (int j = 0; j < 10; j++) tb.tick();
-
+        tb.dut->tckc_i = 0;
+        for (int j = 0; j < 10; j++) tb.tick();
+    }
+    for (int i = 0; i < 4; i++) {
+        tb.dut->tmsc_i = ec[i];
+        tb.dut->tckc_i = 1;
+        for (int j = 0; j < 10; j++) tb.tick();
+        tb.dut->tckc_i = 0;
+        for (int j = 0; j < 10; j++) tb.tick();
+    }
+    for (int i = 0; i < 4; i++) {
+        tb.dut->tmsc_i = cp[i];
+        tb.dut->tckc_i = 1;
+        for (int j = 0; j < 10; j++) tb.tick();
         tb.dut->tckc_i = 0;
         for (int j = 0; j < 10; j++) tb.tick();
     }
@@ -2941,6 +3030,193 @@ TEST_CASE(oac_ec_cp_field_values) {
     for (int i = 0; i < 50; i++) tb.tick();
 
     ASSERT_EQ(tb.dut->online_o, 0, "Wrong OAC should reject activation");
+}
+
+TEST_CASE(cp_validation_all_bits_correct) {
+    // Test CP validation with correct XOR parity
+    // CP[i] = OAC[i] ⊕ EC[i]
+    // OAC=0011 (LSB), EC=0001 (LSB), CP=0010 (LSB)
+    
+    tb.send_escape_sequence(6);
+    tb.send_oac_sequence(); // Uses correct CP
+    for (int i = 0; i < 50; i++) tb.tick();
+    
+    ASSERT_EQ(tb.dut->online_o, 1, "Correct CP parity should activate");
+}
+
+TEST_CASE(cp_validation_single_bit_errors) {
+    // Test CP validation rejects single-bit errors in CP field
+    
+    // Test CP bit 0 error
+    tb.send_escape_sequence(6);
+    int packet_cp0_err[12] = {0, 0, 1, 1,  0, 0, 0, 1,  1, 0, 1, 0}; // CP[0] flipped
+    for (int i = 0; i < 12; i++) {
+        tb.tckc_cycle(packet_cp0_err[i]);
+    }
+    for (int i = 0; i < 50; i++) tb.tick();
+    ASSERT_EQ(tb.dut->online_o, 0, "CP bit 0 error should reject");
+    
+    // Test CP bit 1 error
+    tb.send_escape_sequence(8);
+    for (int i = 0; i < 50; i++) tb.tick();
+    tb.send_escape_sequence(6);
+    int packet_cp1_err[12] = {0, 0, 1, 1,  0, 0, 0, 1,  0, 1, 1, 0}; // CP[1] flipped
+    for (int i = 0; i < 12; i++) {
+        tb.tckc_cycle(packet_cp1_err[i]);
+    }
+    for (int i = 0; i < 50; i++) tb.tick();
+    ASSERT_EQ(tb.dut->online_o, 0, "CP bit 1 error should reject");
+    
+    // Test CP bit 2 error
+    tb.send_escape_sequence(8);
+    for (int i = 0; i < 50; i++) tb.tick();
+    tb.send_escape_sequence(6);
+    int packet_cp2_err[12] = {0, 0, 1, 1,  0, 0, 0, 1,  0, 0, 0, 0}; // CP[2] flipped
+    for (int i = 0; i < 12; i++) {
+        tb.tckc_cycle(packet_cp2_err[i]);
+    }
+    for (int i = 0; i < 50; i++) tb.tick();
+    ASSERT_EQ(tb.dut->online_o, 0, "CP bit 2 error should reject");
+    
+    // Test CP bit 3 error
+    tb.send_escape_sequence(8);
+    for (int i = 0; i < 50; i++) tb.tick();
+    tb.send_escape_sequence(6);
+    int packet_cp3_err[12] = {0, 0, 1, 1,  0, 0, 0, 1,  0, 0, 1, 1}; // CP[3] flipped
+    for (int i = 0; i < 12; i++) {
+        tb.tckc_cycle(packet_cp3_err[i]);
+    }
+    for (int i = 0; i < 50; i++) tb.tick();
+    ASSERT_EQ(tb.dut->online_o, 0, "CP bit 3 error should reject");
+}
+
+TEST_CASE(cp_validation_multiple_bit_errors) {
+    // Test CP validation rejects multiple-bit errors
+    
+    // All CP bits wrong
+    tb.send_escape_sequence(6);
+    int packet_all_wrong[12] = {0, 0, 1, 1,  0, 0, 0, 1,  1, 1, 0, 1};
+    for (int i = 0; i < 12; i++) {
+        tb.tckc_cycle(packet_all_wrong[i]);
+    }
+    for (int i = 0; i < 50; i++) tb.tick();
+    ASSERT_EQ(tb.dut->online_o, 0, "All CP bits wrong should reject");
+    
+    // Two CP bits wrong
+    tb.send_escape_sequence(8);
+    for (int i = 0; i < 50; i++) tb.tick();
+    tb.send_escape_sequence(6);
+    int packet_two_wrong[12] = {0, 0, 1, 1,  0, 0, 0, 1,  1, 1, 1, 0}; // CP[0] and CP[1] flipped
+    for (int i = 0; i < 12; i++) {
+        tb.tckc_cycle(packet_two_wrong[i]);
+    }
+    for (int i = 0; i < 50; i++) tb.tick();
+    ASSERT_EQ(tb.dut->online_o, 0, "Two CP bits wrong should reject");
+}
+
+TEST_CASE(cp_validation_with_wrong_ec) {
+    // Test that wrong EC with matching CP still fails (OAC must be correct too)
+    
+    tb.send_escape_sequence(6);
+    // Wrong EC: 0000 instead of 0001, with CP that would match this wrong EC
+    int packet_wrong_ec[12] = {0, 0, 1, 1,  0, 0, 0, 0,  0, 0, 1, 1}; // EC=0000, CP=0011
+    for (int i = 0; i < 12; i++) {
+        tb.tckc_cycle(packet_wrong_ec[i]);
+    }
+    for (int i = 0; i < 50; i++) tb.tick();
+    ASSERT_EQ(tb.dut->online_o, 0, "Wrong EC should reject even with valid CP for that EC");
+}
+
+TEST_CASE(cp_validation_all_zeros) {
+    // Test CP = 0000 (all zeros) - should fail since correct CP is 0010
+    
+    tb.send_escape_sequence(6);
+    int packet_cp_zeros[12] = {0, 0, 1, 1,  0, 0, 0, 1,  0, 0, 0, 0};
+    for (int i = 0; i < 12; i++) {
+        tb.tckc_cycle(packet_cp_zeros[i]);
+    }
+    for (int i = 0; i < 50; i++) tb.tick();
+    ASSERT_EQ(tb.dut->online_o, 0, "All-zero CP should reject");
+}
+
+TEST_CASE(cp_validation_all_ones) {
+    // Test CP = 1111 (all ones) - should fail since correct CP is 0010
+    
+    tb.send_escape_sequence(6);
+    int packet_cp_ones[12] = {0, 0, 1, 1,  0, 0, 0, 1,  1, 1, 1, 1};
+    for (int i = 0; i < 12; i++) {
+        tb.tckc_cycle(packet_cp_ones[i]);
+    }
+    for (int i = 0; i < 50; i++) tb.tick();
+    ASSERT_EQ(tb.dut->online_o, 0, "All-one CP should reject");
+}
+
+TEST_CASE(cp_xor_calculation_verification) {
+    // Verify CP calculation: CP[i] = OAC[i] ⊕ EC[i]
+    // OAC = 0011, EC = 0001, CP = 0010
+    // Bit 0: 0⊕0=0 ✓
+    // Bit 1: 0⊕0=0 ✓
+    // Bit 2: 1⊕0=1 ✓
+    // Bit 3: 1⊕1=0 ✓
+    
+    tb.send_escape_sequence(6);
+    
+    // Send correct packet
+    int oac[4] = {0, 0, 1, 1};
+    int ec[4] = {0, 0, 0, 1};
+    int cp[4];
+    for (int i = 0; i < 4; i++) {
+        cp[i] = oac[i] ^ ec[i];
+    }
+    
+    // Verify our calculation matches expected
+    ASSERT_EQ(cp[0], 0, "CP[0] should be 0");
+    ASSERT_EQ(cp[1], 0, "CP[1] should be 0");
+    ASSERT_EQ(cp[2], 1, "CP[2] should be 1");
+    ASSERT_EQ(cp[3], 0, "CP[3] should be 0");
+    
+    // Send the packet
+    for (int i = 0; i < 4; i++) tb.tckc_cycle(oac[i]);
+    for (int i = 0; i < 4; i++) tb.tckc_cycle(ec[i]);
+    for (int i = 0; i < 4; i++) tb.tckc_cycle(cp[i]);
+    
+    for (int i = 0; i < 50; i++) tb.tick();
+    ASSERT_EQ(tb.dut->online_o, 1, "Correctly calculated CP should activate");
+}
+
+TEST_CASE(cp_validation_stress_test) {
+    // Stress test: Try many invalid CP values rapidly
+    
+    for (int attempt = 0; attempt < 10; attempt++) {
+        tb.send_escape_sequence(6);
+        
+        // Try different invalid CP patterns
+        int invalid_cp = (attempt % 4);
+        int packet[12] = {0, 0, 1, 1,  0, 0, 0, 1,  0, 0, 1, 0}; // Start with correct
+        
+        // Corrupt one CP bit based on attempt
+        if (invalid_cp < 4) {
+            packet[8 + invalid_cp] = !packet[8 + invalid_cp];
+        }
+        
+        for (int i = 0; i < 12; i++) {
+            tb.tckc_cycle(packet[i]);
+        }
+        for (int i = 0; i < 50; i++) tb.tick();
+        
+        // Should still be offline
+        ASSERT_EQ(tb.dut->online_o, 0, "Invalid CP should not activate");
+        
+        // Reset for next iteration
+        tb.send_escape_sequence(8);
+        for (int i = 0; i < 50; i++) tb.tick();
+    }
+    
+    // Finally send correct sequence
+    tb.send_escape_sequence(6);
+    tb.send_oac_sequence();
+    for (int i = 0; i < 50; i++) tb.tick();
+    ASSERT_EQ(tb.dut->online_o, 1, "Valid sequence should activate after failed attempts");
 }
 
 TEST_CASE(oscan1_format_compliance) {
@@ -4301,9 +4577,17 @@ int main(int argc, char** argv) {
     RUN_TEST(walking_ones_pattern);
     RUN_TEST(walking_zeros_pattern);
 
-    // Tests 99-101: Protocol Compliance
+    // Tests 99-109: Protocol Compliance & CP Validation
     RUN_TEST(ieee1149_7_selection_sequence);
     RUN_TEST(oac_ec_cp_field_values);
+    RUN_TEST(cp_validation_all_bits_correct);
+    RUN_TEST(cp_validation_single_bit_errors);
+    RUN_TEST(cp_validation_multiple_bit_errors);
+    RUN_TEST(cp_validation_with_wrong_ec);
+    RUN_TEST(cp_validation_all_zeros);
+    RUN_TEST(cp_validation_all_ones);
+    RUN_TEST(cp_xor_calculation_verification);
+    RUN_TEST(cp_validation_stress_test);
     RUN_TEST(oscan1_format_compliance);
 
     // Debug Module Tests

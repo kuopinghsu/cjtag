@@ -10,11 +10,12 @@ This project implements a **cJTAG adapter** that converts a 2-wire cJTAG interfa
 - **TAP.7 star-2 scan topology**
 - **Online/Offline state management**
 - **Escape sequences** for mode switching
-- **Online Activation Code (OAC)** validation
+- **Online Activation Code (OAC)** validation with CP parity checking
 
 ## Features
 
 - ✅ Full cJTAG to JTAG bridge (OScan1 format)
+- ✅ 12-bit Activation Packet with CP (Check Packet) parity validation (IEEE 1149.7 compliant)
 - ✅ Simple JTAG TAP controller for testing
 - ✅ OpenOCD VPI interface for remote debugging
 - ✅ Verilator-based simulation with FST waveform support
@@ -112,6 +113,7 @@ This runs the comprehensive test suite covering:
 - Reset behavior
 - Escape sequences (all toggle counts 0-31)
 - OAC validation (valid/invalid/partial)
+- **CP (Check Packet) validation (8 comprehensive tests)**
 - OScan1 packet operation (1000+ packet stress tests)
 - TAP state machine (all 16 states)
 - IDCODE readout
@@ -121,7 +123,7 @@ This runs the comprehensive test suite covering:
 - Timing and signal integrity
 - Protocol compliance (IEEE 1149.7)
 
-Expected output: **121/121 tests passed ✅**
+Expected output: **131/131 tests passed ✅**
 
 ### 6. Run OpenOCD Integration Tests
 
@@ -258,7 +260,7 @@ Usage Examples:
 
 **Key Features**:
 - Escape sequence detection (online/offline/reset)
-- OAC validation (1100 + 1000 + 0000)
+- 12-bit Activation Packet validation (OAC + EC + CP with XOR parity)
 - OScan1 3-bit packet handling
 - TCK generation (1:3 ratio with TCKC)
 
@@ -321,18 +323,21 @@ In OScan1 mode, each JTAG bit requires **3 TCKC cycles**:
 
 Performed by holding TCKC high and toggling TMSC:
 
-- **8 edges** (±1): Go online
-- **4 edges** (±1): Reset
-- **Other**: Ignored
+- **6-7 toggles**: Selection (OFFLINE → ONLINE_ACT)
+- **4-5 toggles**: Deselection (OSCAN1 → OFFLINE)
+- **8+ toggles**: Reset (any state → OFFLINE)
 
-### Online Activation Code (OAC)
+### 12-bit Activation Packet (OAC + EC + CP)
 
-After online escape, 12 bits are required:
-- **OAC**: 1100 (LSB first) - TAP.7 star-2
-- **EC**: 1000 - short form
-- **CP**: 0000 - check packet
+After selection escape sequence (6-7 toggles), a 12-bit activation packet is required:
 
-Only this specific code activates the bridge.
+- **OAC** (Online Activation Code): 4 bits = 1100 (LSB first) - TAP.7 star-2 topology
+- **EC** (Extension Code): 4 bits = 1000 (LSB first) - short form
+- **CP** (Check Packet): 4 bits = 0100 (LSB first) - XOR parity for data integrity
+
+**CP Calculation**: CP[i] = OAC[i] ⊕ EC[i] (bitwise XOR)
+
+**Validation**: The bridge validates all three fields (OAC, EC, and CP) before activating. Only the correct 12-bit sequence with valid CP parity will activate the bridge, providing robust protocol compliance and data integrity checking per IEEE 1149.7 specification.
 
 ## Waveform Analysis
 
@@ -348,7 +353,7 @@ When running with `WAVE=1`, the FST waveform includes:
 ### Key Signals to Observe
 
 1. **Escape Detection**: Watch `tmsc_i` edges while `tckc_i` is high
-2. **OAC Reception**: 12 TCKC cycles after online escape
+2. **Activation Packet**: 12 TCKC cycles after selection escape (OAC + EC + CP)
 3. **OScan1 Packets**: 3-bit groups (nTDI, TMS, TDO)
 4. **TCK Generation**: TCK pulses on every 3rd TCKC
 
@@ -416,12 +421,12 @@ sudo apt-get install verilator
 
 ## Automated Test Suite
 
-The project includes a comprehensive automated test suite in [tb/test_cjtag.cpp](tb/test_cjtag.cpp) with **121 test cases** providing complete protocol validation.
+The project includes a comprehensive automated test suite in [tb/test_cjtag.cpp](tb/test_cjtag.cpp) with **131 test cases** providing complete protocol validation.
 
 ### Test Statistics
-- **Total Tests**: 121 (100% passing ✅)
-- **Test File Size**: 4,273 lines
-- **Coverage**: Protocol, state machine, timing, TAP operations, RISC-V debug module, error recovery, stress testing
+- **Total Tests**: 131 (100% passing ✅)
+- **Test File Size**: 4,900+ lines
+- **Coverage**: Protocol, state machine, timing, TAP operations, RISC-V debug module, error recovery, stress testing, **CP parity validation**
 - **Execution Time**: ~5 seconds
 
 ### Test Categories
@@ -497,7 +502,7 @@ The project includes a comprehensive automated test suite in [tb/test_cjtag.cpp]
 - All 16 TAP states individually
 - Multiple instruction values
 
-#### 10. Performance & Compliance (11 tests)
+#### 10. Performance & Compliance (19 tests)
 - nTRST pulse widths
 - Software TAP reset
 - Maximum packet rate
@@ -506,6 +511,13 @@ The project includes a comprehensive automated test suite in [tb/test_cjtag.cpp]
 - Walking ones/zeros patterns
 - IEEE 1149.7 compliance
 - OAC/EC/CP field validation
+- **CP parity validation (8 comprehensive tests)**:
+  - Single-bit error detection in CP field
+  - Multiple-bit error detection
+  - XOR calculation verification (CP[i] = OAC[i] ⊕ EC[i])
+  - Invalid EC with matching CP rejection
+  - All-zeros and all-ones CP patterns
+  - CP validation stress testing (10+ invalid attempts)
 - OScan1 format compliance
 
 #### 11. RISC-V Debug Module (19 tests)
@@ -545,12 +557,12 @@ cJTAG Bridge Automated Test Suite
 Running test: 01. reset_state ... PASS
 Running test: 02. escape_sequence_online_6_edges ... PASS
 ...
-Running test: 119. mixed_idcode_dtmcs_dmi_sequence ... PASS
-Running test: 120. debug_module_all_registers ... PASS
-Running test: 121. dmi_stress_test_100_operations ... PASS
+Running test: 129. mixed_idcode_dtmcs_dmi_sequence ... PASS
+Running test: 130. debug_module_all_registers ... PASS
+Running test: 131. dmi_stress_test_100_operations ... PASS
 
 ========================================
-Test Results: 121 tests passed
+Test Results: 131 tests passed
 ========================================
 ✅ ALL TESTS PASSED!
 ```
@@ -559,6 +571,8 @@ Test Results: 121 tests passed
 For detailed test descriptions, debugging guide, and adding new tests, see [docs/TEST_GUIDE.md](docs/TEST_GUIDE.md).
 
 **New in v1.2**: 19 comprehensive RISC-V Debug Module tests added, covering DTMCS, DMI, dmcontrol, dmstatus, and hartinfo registers with full integration testing.
+
+**New in v1.3**: 8 enhanced CP (Check Packet) validation tests added, providing comprehensive IEEE 1149.7 parity checking compliance with single-bit and multiple-bit error detection.
 
 ## OpenOCD Integration Test Suite
 
@@ -816,8 +830,8 @@ This project is provided as-is for educational and development purposes.
 Contributions welcome! Areas for improvement:
 
 - [x] Comprehensive automated test suite (121 tests completed ✅)
+- [x] CP (Check Packet) parity checking (IEEE 1149.7 compliant ✅)
 - [ ] Implement more scanning formats (SF1-SF3)
-- [ ] Add CRC/parity checking
 - [ ] Support multiple TAP devices
 - [ ] Power management features
 - [ ] Enhanced protocol compliance testing
@@ -829,8 +843,9 @@ Contributions welcome! Areas for improvement:
 - IEEE 1149.7 OScan1 format implementation
 - Full JTAG TAP controller with RISC-V Debug Module support
 - OpenOCD VPI interface
-- **121 comprehensive automated tests** (100% passing)
+- **131 comprehensive automated tests** (100% passing)
 - **8 OpenOCD integration tests** (100% passing)
+- **Enhanced CP validation suite** (8 dedicated tests for parity checking)
 - Complete protocol validation
 - RISC-V Debug Module integration (DTMCS, DMI, dmcontrol, dmstatus, hartinfo)
 - Error recovery and robustness testing
@@ -857,10 +872,10 @@ Contributions welcome! Areas for improvement:
 - All escape sequences validated by comprehensive testing
 
 **Test Coverage:**
-- **123 Verilator automated tests** (100% passing ✅)
+- **131 Verilator automated tests** (100% passing ✅)
 - **8 OpenOCD integration tests** (100% passing ✅)
 - **1 VPI IDCODE verification test** (passing ✅)
-- **132 total tests** ensuring production quality
+- **140 total tests** ensuring production quality
 
 ## Performance
 
@@ -883,7 +898,9 @@ For issues and questions:
 **Initial Release**
 - ✅ Complete IEEE 1149.7 OScan1 3-bit packet format implementation
 - ✅ Full escape sequence support (4-5, 6-7, 8+ toggles for deselection/selection/reset)
-- ✅ 123 automated Verilator tests (100% passing)
+- ✅ 12-bit Activation Packet with CP (Check Packet) parity validation
+- ✅ **8 comprehensive CP validation tests** (single/multiple-bit error detection, XOR verification)
+- ✅ 131 automated Verilator tests (100% passing)
 - ✅ OpenOCD VPI integration with 8 integration tests
 - ✅ IDCODE stress test with configurable iterations
 - ✅ Comprehensive documentation (Architecture, Protocol, Test Guide)
@@ -893,12 +910,14 @@ For issues and questions:
 
 **Key Features:**
 - IEEE 1149.7 compliant 3-bit OScan1 packet format: {nTDI, TMS, TDO}
+- 12-bit Activation Packet (OAC + EC + CP) with XOR parity validation
+- **Robust CP validation**: detects single-bit and multiple-bit errors
 - Runtime escape sequence detection with configurable glitch filtering
 - Dual-edge TCKC support with proper synchronization
 - Production-ready synthesizable RTL
 
 **Testing:**
-- `make test` - 123 automated tests
+- `make test` - 131 automated tests including 8 CP validation tests
 - `make test-openocd` - 8 OpenOCD integration tests
 - `make test-idcode` - IDCODE stress test (100 iterations default)
 

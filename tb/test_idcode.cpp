@@ -93,11 +93,21 @@ public:
     }
 
     void send_oac_sequence() {
-        // OAC = 0xB = {1,1,0,1} (4 bits, LSB first)
-        int bits[4] = {1, 1, 0, 1};
+        // Full 12-bit activation packet per IEEE 1149.7:
+        // OAC (4 bits) + EC (4 bits) + CP (4 bits) - all LSB first
+        int oac[4] = {0, 0, 1, 1};  // OAC: 1100 LSB first
+        int ec[4]  = {0, 0, 0, 1};  // EC: 1000 LSB first
+        int cp[4];                  // CP: calculated
+
+        // Calculate CP: CP[i] = OAC[i] XOR EC[i]
         for (int i = 0; i < 4; i++) {
-            tckc_cycle(bits[i]);
+            cp[i] = oac[i] ^ ec[i];
         }
+
+        // Send all 12 bits
+        for (int i = 0; i < 4; i++) tckc_cycle(oac[i]);
+        for (int i = 0; i < 4; i++) tckc_cycle(ec[i]);
+        for (int i = 0; i < 4; i++) tckc_cycle(cp[i]);
     }
 
     void send_oscan1_packet(int tdi, int tms, int* tdo_out) {

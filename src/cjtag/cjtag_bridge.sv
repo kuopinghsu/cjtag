@@ -85,8 +85,8 @@ module cjtag_bridge (
     logic        tckc_is_high;          // TCKC currently held high
     logic [4:0]  tckc_high_cycles;      // Counter for TCKC high duration
 
-    logic [2:0]  oac_shift;             // Online Activation Code shift register (3 bits, 4th bit in tmsc_s)
-    logic [3:0]  oac_count;             // Bit counter for OAC reception
+    logic [10:0] activation_shift;      // Activation packet shift register (11 bits, 12th bit in tmsc_s)
+    logic [3:0]  activation_count;      // Bit counter for activation packet (0-11)
     logic [1:0]  bit_pos;               // Position in 3-bit OScan1 packet
     logic        tmsc_sampled;          // TMSC sampled on TCKC negedge
 
@@ -205,8 +205,8 @@ module cjtag_bridge (
     always_ff @(posedge clk_i or negedge ntrst_i) begin
         if (!ntrst_i) begin
             state           <= ST_OFFLINE;
-            oac_shift       <= 3'd0;
-            oac_count       <= 4'd0;
+            activation_shift <= 11'd0;
+            activation_count <= 4'd0;
             bit_pos         <= 2'd0;
             tmsc_sampled    <= 1'b0;
         end else begin
@@ -226,8 +226,8 @@ module cjtag_bridge (
                         if (tmsc_toggle_count >= 5'd6 && tmsc_toggle_count <= 5'd7) begin
                             // Selection escape (6-7 toggles) - enter activation
                             state <= ST_ONLINE_ACT;
-                            oac_shift <= 3'd0;
-                            oac_count <= 4'd0;
+                            activation_shift <= 11'd0;
+                            activation_count <= 4'd0;
 
                             `ifdef VERBOSE
                             $display("[%0t] OFFLINE -> ONLINE_ACT (%0d toggles)",
@@ -259,65 +259,89 @@ module cjtag_bridge (
                     `ifdef VERBOSE
                     // Debug every clock cycle in ONLINE_ACT
                     if (tckc_negedge || tckc_posedge) begin
-                        $display("[%0t] ONLINE_ACT: tckc_negedge=%b tckc_posedge=%b oac_count=%0d tckc_s=%b tmsc_s=%b",
-                                 $time, tckc_negedge, tckc_posedge, oac_count, tckc_s, tmsc_s);
+                        $display("[%0t] ONLINE_ACT: tckc_negedge=%b tckc_posedge=%b activation_count=%0d tckc_s=%b tmsc_s=%b",
+                                 $time, tckc_negedge, tckc_posedge, activation_count, tckc_s, tmsc_s);
                     end
                     `endif
 
                     // Check for reset escape (8+ toggles) at any time - takes priority
                     if (tckc_negedge && tmsc_toggle_count >= 5'd8) begin
                         state <= ST_OFFLINE;
-                        oac_shift <= 3'd0;
-                        oac_count <= 4'd0;
+                        activation_shift <= 11'd0;
+                        activation_count <= 4'd0;
 
                         `ifdef VERBOSE
                         $display("[%0t] ONLINE_ACT -> OFFLINE (reset escape: %0d toggles)",
                                  $time, tmsc_toggle_count);
                         `endif
                     end
-                    // Sample TMSC on TCKC falling edge (normal OAC reception)
+                    // Sample TMSC on TCKC falling edge (normal activation packet reception)
                     else if (tckc_negedge) begin
-                        oac_shift <= {tmsc_s, oac_shift[2:1]};
+                        activation_shift <= {tmsc_s, activation_shift[10:1]};
 
                         `ifdef VERBOSE
-                        $display("[%0t] ONLINE_ACT (state=%0d): bit %0d, tmsc_s=%b",
-                                 $time, state, oac_count, tmsc_s);
+                        $display("[%0t] ONLINE_ACT: bit %0d, tmsc_s=%b",
+                                 $time, activation_count, tmsc_s);
                         `endif
 
-                        // After 4 bits, check the OAC pattern
-                        // Bits are received LSB first from OpenOCD: {1,1,0,1}
-                        // After 3 shifts, oac_shift[2:0] = {bit2, bit1, bit0}, tmsc_s = bit3
-                        // Combine {tmsc_s, oac_shift[2:0]} = {bit3, bit2, bit1, bit0}
-                        if (oac_count == 4'd3) begin
-                            // Check OAC pattern with 4 bits
-                            // Combine current bit (tmsc_s) with previous 3 bits from shift register
-                            logic [3:0] received_oac;
-                            received_oac = {tmsc_s, oac_shift[2:0]};
+                        // After 12 bits (count 0-11), check the full activation packet
+                        // Format: OAC (4 bits) + EC (4 bits) + CP (4 bits) - all LSB first
+                        // Expected: OAC=1100, EC=1000, CP=calculated parity
+                        if (activation_count == 4'd11) begin
+                            // Combine current bit with previous 11 bits: {tmsc_s, activation_shift[10:0]}
+                            logic [11:0] received_packet;
+                            logic [3:0] received_oac, received_ec, received_cp;
+                            logic [3:0] calculated_cp;
+                            logic cp_valid;
+
+                            received_packet = {tmsc_s, activation_shift[10:0]};
+
+                            // Extract fields (bits received LSB first)
+                            received_oac = received_packet[3:0];   // OAC: bits 0-3
+                            received_ec  = received_packet[7:4];   // EC: bits 4-7
+                            received_cp  = received_packet[11:8];  // CP: bits 8-11
+
+                            // Calculate CP: XOR of each bit position across OAC and EC
+                            // CP[0] = OAC[0] XOR EC[0], CP[1] = OAC[1] XOR EC[1], etc.
+                            calculated_cp = received_oac ^ received_ec;
+
+                            // Validate CP (always enabled for IEEE 1149.7 compliance)
+                            cp_valid = (received_cp == calculated_cp);
 
                             `ifdef VERBOSE
-                            $display("[%0t] Checking OAC (4 bits): received=%b, expected=1011",
-                                     $time, received_oac);
+                            $display("[%0t] Checking activation packet:", $time);
+                            $display("    Full packet: %b", received_packet);
+                            $display("    OAC=%b (expected=1100), EC=%b (expected=1000), CP=%b",
+                                     received_oac, received_ec, received_cp);
+                            $display("    Calculated CP=%b, CP valid=%b", calculated_cp, cp_valid);
                             `endif
 
-                            // OpenOCD sends {1,1,0,1} LSB first, which becomes {1,0,1,1} after right-shift
-                            if (received_oac == 4'b1011) begin
+                            // Validate: OAC=1100, EC=1000, CP matches calculated value
+                            if (received_oac == 4'b1100 && received_ec == 4'b1000 && cp_valid) begin
                                 state <= ST_OSCAN1;
                                 bit_pos <= 2'd0;
 
                                 `ifdef VERBOSE
-                                $display("[%0t] ONLINE_ACT -> OSCAN1 (OAC matched!)", $time);
+                                $display("[%0t] ONLINE_ACT -> OSCAN1 (activation packet valid!)", $time);
                                 `endif
                             end else begin
                                 state <= ST_OFFLINE;
 
                                 `ifdef VERBOSE
-                                $display("[%0t] ONLINE_ACT -> OFFLINE (invalid OAC: %b)", $time, received_oac);
+                                if (!cp_valid) begin
+                                    $display("[%0t] ONLINE_ACT -> OFFLINE (CP parity error: rx=%b calc=%b)",
+                                             $time, received_cp, calculated_cp);
+                                end else if (received_oac != 4'b1100) begin
+                                    $display("[%0t] ONLINE_ACT -> OFFLINE (invalid OAC: %b)", $time, received_oac);
+                                end else begin
+                                    $display("[%0t] ONLINE_ACT -> OFFLINE (invalid EC: %b)", $time, received_ec);
+                                end
                                 `endif
                             end
-                            oac_count <= 4'd0;
+                            activation_count <= 4'd0;
                         end else begin
-                            // Not yet 4 bits, increment counter
-                            oac_count <= oac_count + 4'd1;
+                            // Not yet 12 bits, increment counter
+                            activation_count <= activation_count + 4'd1;
                         end
                     end
                 end
@@ -345,8 +369,8 @@ module cjtag_bridge (
                             `endif
 
                             state <= ST_OFFLINE;
-                            oac_shift <= 3'd0;
-                            oac_count <= 4'd0;
+                            activation_shift <= 11'd0;
+                            activation_count <= 4'd0;
                             bit_pos <= 2'd0;
                         end
                         // Check for reset escape (8+ toggles while TCKC was high)
@@ -357,8 +381,8 @@ module cjtag_bridge (
                             `endif
 
                             state <= ST_OFFLINE;
-                            oac_shift <= 3'd0;
-                            oac_count <= 4'd0;
+                            activation_shift <= 11'd0;
+                            activation_count <= 4'd0;
                             bit_pos <= 2'd0;
                         end
                         // Normal operation: sample TMSC for current bit position

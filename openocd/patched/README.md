@@ -28,7 +28,7 @@ patch -p1 < /path/to/001-jtag_vpi-cjtag-support.patch
 Create new file: `src/jtag/drivers/oscan1.c`
 
 **Features**:
-- OAC (Attention Character) sequence generation
+- 12-bit Activation Packet generation (OAC + EC + CP with XOR parity validation)
 - JScan command encoding
 - Zero insertion/deletion (bit stuffing)
 - Scanning Format 0 (SF0) encoder/decoder

@@ -34,7 +34,10 @@ New source file `src/jtag/drivers/oscan1.c` implementing the OScan1 protocol lay
 int oscan1_init(void)
 ```
 1. Sends escape sequence (6 TMSC toggles while TCKC high)
-2. Sends OAC (Online Activation Code): 0xB = 1,1,0,1 (LSB first)
+2. Sends 12-bit Activation Packet (OAC + EC + CP):
+   - OAC (Online Activation Code): 4 bits = 1100 (LSB first)
+   - EC (Extension Code): 4 bits = 1000 (LSB first)
+   - CP (Check Packet): 4 bits, calculated as CP[i] = OAC[i] ⊕ EC[i]
 3. Sends JSCAN_OSCAN_ON command to enable OScan1 mode
 4. Sends JSCAN_SELECT to select the device
 5. Sends JSCAN_SF_SELECT to choose Scanning Format 0

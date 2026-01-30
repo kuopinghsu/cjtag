@@ -716,6 +716,27 @@ IOBUF u_tmsc_iobuf (
 );
 ```
 
+### Check Packet (CP) Validation
+
+The cJTAG bridge implements mandatory CP field validation for IEEE 1149.7 compliance.
+
+**CP Calculation:**
+- CP field provides bit-wise XOR parity: CP[i] = OAC[i] ⊕ EC[i]
+- Validates data integrity during the 12-bit activation sequence
+- Rejects activation packets with incorrect CP values
+
+**Example:**
+```
+OAC = 1100 (LSB first: 0,0,1,1)
+EC  = 1000 (LSB first: 0,0,0,1)
+CP  = 0100 (LSB first: 0,0,1,0)  // XOR of OAC and EC
+
+CP[0] = OAC[0] ⊕ EC[0] = 0 ⊕ 0 = 0
+CP[1] = OAC[1] ⊕ EC[1] = 0 ⊕ 0 = 0
+CP[2] = OAC[2] ⊕ EC[2] = 1 ⊕ 0 = 1
+CP[3] = OAC[3] ⊕ EC[3] = 1 ⊕ 1 = 0
+```
+
 ### Physical Layer Considerations
 
 **PCB Design:**

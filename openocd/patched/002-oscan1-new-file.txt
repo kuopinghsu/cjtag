@@ -1,5 +1,12 @@
 /*
  * IEEE 1149.7 cJTAG OScan1 Protocol Implementation
+ * 
+ * Features:
+ * - Full 12-bit Activation Packet support (OAC + EC + CP)
+ * - CP (Check Packet) validation using XOR parity: CP[i] = OAC[i] ⊕ EC[i]
+ * - Escape sequence handling (6-7 TMSC toggles)
+ * - Scanning Format 0 (SF0) encoding
+ * - CRC-8 calculation support
  */
 
 #include "config.h"
@@ -45,8 +52,15 @@ static uint8_t oscan1_receive_tmsc(void);
 
 int oscan1_send_oac(void)
 {
-	/* Send OScan1 OAC (Online Activation Code) sequence
-	 * OAC is 0xB (1011 in binary, LSB first: 1,1,0,1)
+	/* Send OScan1 Activation Packet (12 bits: OAC + EC + CP)
+	 * IEEE 1149.7 Activation Packet Structure (LSB first):
+	 *   - OAC (Online Activation Code): 4 bits = 1100 (LSB first)
+	 *   - EC (Extension Code): 4 bits = 1000 (LSB first)
+	 *   - CP (Check Packet): 4 bits, calculated as CP[i] = OAC[i] ⊕ EC[i]
+	 * 
+	 * Expected CP: CP[0]=0, CP[1]=0, CP[2]=1, CP[3]=0
+	 * Full sequence: 1,1,0,0, 1,0,0,0, 0,0,1,0 (12 bits)
+	 * 
 	 * Preceded by escape sequence (6-7 TMSC toggles while TCKC high) */
 	
 	LOG_DEBUG("Sending escape sequence (6 toggles)...");
@@ -70,17 +84,51 @@ int oscan1_send_oac(void)
 	if (oscan1_send_tckc_tmsc(0, 1) != ERROR_OK)
 		return ERROR_FAIL;
 
-	LOG_DEBUG("Sending OAC pattern (0xB = 1,1,0,1)...");
+	LOG_DEBUG("Sending 12-bit Activation Packet (OAC + EC + CP)...");
 	
-	/* OAC pattern: 1,1,0,1 (LSB first) */
-	uint8_t oac_pattern[] = {1, 1, 0, 1};
+	/* OAC pattern: 1,1,0,0 (LSB first) - bits sent as 0,0,1,1 for proper ordering */
+	uint8_t oac[4] = {0, 0, 1, 1};
+	
+	/* EC pattern: 1,0,0,0 (LSB first) - bits sent as 0,0,0,1 */
+	uint8_t ec[4] = {0, 0, 0, 1};
+	
+	/* Calculate CP: CP[i] = OAC[i] ⊕ EC[i] */
+	uint8_t cp[4];
 	for (int i = 0; i < 4; i++) {
-		LOG_DEBUG("  OAC bit %d: sending TCKC=1, TMSC=%d", i, oac_pattern[i]);
-		/* Send as TCKC edges with TMSC data */
-		if (oscan1_send_tckc_tmsc(1, oac_pattern[i]) != ERROR_OK)
+		cp[i] = oac[i] ^ ec[i];
+	}
+	
+	LOG_DEBUG("  OAC: %d,%d,%d,%d", oac[0], oac[1], oac[2], oac[3]);
+	LOG_DEBUG("  EC:  %d,%d,%d,%d", ec[0], ec[1], ec[2], ec[3]);
+	LOG_DEBUG("  CP:  %d,%d,%d,%d", cp[0], cp[1], cp[2], cp[3]);
+	
+	/* Send OAC (4 bits) */
+	for (int i = 0; i < 4; i++) {
+		LOG_DEBUG("  OAC bit %d: sending TCKC=1, TMSC=%d", i, oac[i]);
+		if (oscan1_send_tckc_tmsc(1, oac[i]) != ERROR_OK)
 			return ERROR_FAIL;
-		LOG_DEBUG("  OAC bit %d: sending TCKC=0, TMSC=%d", i, oac_pattern[i]);
-		if (oscan1_send_tckc_tmsc(0, oac_pattern[i]) != ERROR_OK)
+		LOG_DEBUG("  OAC bit %d: sending TCKC=0, TMSC=%d", i, oac[i]);
+		if (oscan1_send_tckc_tmsc(0, oac[i]) != ERROR_OK)
+			return ERROR_FAIL;
+	}
+	
+	/* Send EC (4 bits) */
+	for (int i = 0; i < 4; i++) {
+		LOG_DEBUG("  EC bit %d: sending TCKC=1, TMSC=%d", i, ec[i]);
+		if (oscan1_send_tckc_tmsc(1, ec[i]) != ERROR_OK)
+			return ERROR_FAIL;
+		LOG_DEBUG("  EC bit %d: sending TCKC=0, TMSC=%d", i, ec[i]);
+		if (oscan1_send_tckc_tmsc(0, ec[i]) != ERROR_OK)
+			return ERROR_FAIL;
+	}
+	
+	/* Send CP (4 bits) */
+	for (int i = 0; i < 4; i++) {
+		LOG_DEBUG("  CP bit %d: sending TCKC=1, TMSC=%d", i, cp[i]);
+		if (oscan1_send_tckc_tmsc(1, cp[i]) != ERROR_OK)
+			return ERROR_FAIL;
+		LOG_DEBUG("  CP bit %d: sending TCKC=0, TMSC=%d", i, cp[i]);
+		if (oscan1_send_tckc_tmsc(0, cp[i]) != ERROR_OK)
 			return ERROR_FAIL;
 	}
 	

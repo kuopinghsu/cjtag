@@ -130,11 +130,21 @@ To transition from OFFLINE to ONLINE state, execute the following sequence:
 |-------|------|-------|-------------|
 | **OAC** | 4 | `1100` | Online Activation Code - Specifies TAP.7 Star-2 topology |
 | **EC** | 4 | `1000` | Extension Code - Short format via Run-Test/Idle |
-| **CP** | 4 | `0000` | Check Packet - Data integrity verification |
+| **CP** | 4 | Calculated | Check Packet - XOR parity: CP[i] = OAC[i] ⊕ EC[i] |
 
 **Total**: 12 bits transmitted LSB-first
 
-If activation succeeds, the adapter enters ONLINE state and begins Oscan1 protocol operation.
+**CP Calculation**: The Check Packet provides bit-wise parity checking:
+- CP[0] = OAC[0] ⊕ EC[0] = 0 ⊕ 0 = 0
+- CP[1] = OAC[1] ⊕ EC[1] = 0 ⊕ 0 = 0
+- CP[2] = OAC[2] ⊕ EC[2] = 1 ⊕ 0 = 1
+- CP[3] = OAC[3] ⊕ EC[3] = 1 ⊕ 1 = 0
+
+**Result**: CP = `0100` (LSB first)
+
+The RTL validates the CP field by recalculating it and comparing with the received value. If CP doesn't match, the activation packet is rejected and the bridge returns to OFFLINE state.
+
+If activation succeeds (OAC=1100, EC=1000, CP valid), the adapter enters ONLINE state and begins Oscan1 protocol operation.
 
 ### 2. Oscan1 Data Protocol (ONLINE State)
 

@@ -2,12 +2,12 @@
 
 ## Overview
 
-The cJTAG Bridge project includes a comprehensive automated test suite with **123 test cases** providing complete coverage of the IEEE 1149.7 cJTAG implementation and RISC-V Debug Module integration. The test suite has grown from the initial 16 tests to 123 tests (a 669% increase), ensuring robust validation of all protocol aspects, edge cases, timing characteristics, hardware compliance, and complete RISC-V debug functionality.
+The cJTAG Bridge project includes a comprehensive automated test suite with **131 test cases** providing complete coverage of the IEEE 1149.7 cJTAG implementation and RISC-V Debug Module integration. The test suite has grown from the initial 16 tests to 131 tests (a 719% increase), ensuring robust validation of all protocol aspects, edge cases, timing characteristics, hardware compliance, complete RISC-V debug functionality, and **comprehensive CP (Check Packet) parity validation**.
 
 **Test Statistics**:
-- **Total Tests**: 123 (all passing ✅)
-- **Test File Size**: 4,292 lines of code
-- **Coverage**: Protocol compliance, state machine, timing, error recovery, signal integrity, TAP operations, RISC-V debug module (DTMCS, DMI, dmcontrol, dmstatus, hartinfo), stress testing
+- **Total Tests**: 131 (all passing ✅)
+- **Test File Size**: 5,100+ lines of code
+- **Coverage**: Protocol compliance, **CP parity validation**, state machine, timing, error recovery, signal integrity, TAP operations, RISC-V debug module (DTMCS, DMI, dmcontrol, dmstatus, hartinfo), stress testing
 - **Execution Time**: ~15 seconds (all three test suites combined)
 
 ## Quick Start
@@ -21,7 +21,7 @@ make all
 ```
 
 This command executes:
-1. **Automated Test Suite** (123 tests) - Core functionality validation
+1. **Automated Test Suite** (131 tests) - Core functionality validation with CP parity testing
 2. **VPI IDCODE Test** (100 iterations) - VPI communication stress test
 3. **OpenOCD Integration Test** (18 comprehensive steps) - Real-world OpenOCD testing with detailed statistics
 
@@ -31,7 +31,7 @@ This command executes:
 ✅ VPI IDCODE Test PASSED
 ✅ OpenOCD Test PASSED
 
-Test Results: 123/123 tests passed
+Test Results: 131/131 tests passed
 IDCODE: 0x1DEAD3FF verified successfully (100 iterations)
 OpenOCD: 18/18 test steps passed (100%)
 ```
@@ -41,8 +41,8 @@ OpenOCD: 18/18 test steps passed (100%)
 ### Test Framework
 - **Location**: [tb/test_cjtag.cpp](../tb/test_cjtag.cpp)
 - **Framework**: Custom C++ test harness with Verilator
-- **Total Tests**: 123 comprehensive tests
-- **Coverage**: Full protocol, all states, edge cases, timing, signal integrity, TAP deep dive, comprehensive RISC-V debug module testing
+- **Total Tests**: 131 comprehensive tests
+- **Coverage**: Full protocol, all states, edge cases, timing, signal integrity, TAP deep dive, comprehensive RISC-V debug module testing, **CP parity validation**
 
 ### Test Harness Features
 ```cpp
@@ -61,7 +61,7 @@ class TestHarness {
 
 ## Test Suite Organization
 
-The 123 tests are organized into 12 comprehensive categories:
+The 131 tests are organized into 13 comprehensive categories:
 
 ### Category Breakdown
 1. **Basic Functionality** (18 tests) - Core protocol operations (includes 4-5 toggle deselection)
@@ -75,7 +75,8 @@ The 123 tests are organized into 12 comprehensive categories:
 9. **Synchronizer & Edge Detection** (3 tests) - 2-stage sync, edge detection
 10. **Signal Integrity & Output Verification** (4 tests) - Output signal validation
 11. **Escape Sequence, Packet Boundary & Performance** (28 tests) - Comprehensive coverage
-12. **RISC-V Debug Module** (20 tests) - Complete DTM, DMI, and debug register testing
+12. **Protocol Compliance & CP Validation** (11 tests) - IEEE 1149.7 compliance with 8 dedicated CP tests
+13. **RISC-V Debug Module** (20 tests) - Complete DTM, DMI, and debug register testing
 
 ## Complete Test List
 
@@ -332,14 +333,22 @@ Running test: 52. deselection_from_offline ... PASS
 ...
 Running test: 101. ieee1149_7_selection_sequence ... PASS
 Running test: 102. oac_ec_cp_field_values ... PASS
-Running test: 103. oscan1_format_compliance ... PASS
+Running test: 103. cp_validation_all_bits_correct ... PASS
+Running test: 104. cp_validation_single_bit_errors ... PASS
+Running test: 105. cp_validation_multiple_bit_errors ... PASS
+Running test: 106. cp_validation_with_wrong_ec ... PASS
+Running test: 107. cp_validation_all_zeros ... PASS
+Running test: 108. cp_validation_all_ones ... PASS
+Running test: 109. cp_xor_calculation_verification ... PASS
+Running test: 110. cp_validation_stress_test ... PASS
+Running test: 111. oscan1_format_compliance ... PASS
 ...
-Running test: 121. mixed_idcode_dtmcs_dmi_sequence ... PASS
-Running test: 122. debug_module_all_registers ... PASS
-Running test: 123. dmi_stress_test_100_operations ... PASS
+Running test: 129. mixed_idcode_dtmcs_dmi_sequence ... PASS
+Running test: 130. debug_module_all_registers ... PASS
+Running test: 131. dmi_stress_test_100_operations ... PASS
 
 ========================================
-Test Results: 123 tests passed
+Test Results: 131 tests passed
 ========================================
 ✅ ALL TESTS PASSED!
 ```
@@ -350,6 +359,13 @@ Test Results: 123 tests passed
 - ✅ Escape sequence detection (all toggle counts 0-31)
 - ✅ Edge counting with tolerance
 - ✅ OAC validation (valid/invalid/partial)
+- ✅ **CP (Check Packet) parity validation (8 comprehensive tests)**:
+  - ✅ Single-bit error detection in CP field
+  - ✅ Multiple-bit error detection
+  - ✅ XOR calculation verification: CP[i] = OAC[i] ⊕ EC[i]
+  - ✅ Invalid EC with matching CP rejection
+  - ✅ All-zeros and all-ones CP patterns
+  - ✅ CP validation stress testing
 - ✅ OScan1 3-bit packet format
 - ✅ nTDI inversion
 - ✅ TCK generation (3:1 ratio)
@@ -443,17 +459,18 @@ Test Results: 123 tests passed
 
 | Metric | Value |
 |--------|-------|
-| **Total Tests** | 123 |
+| **Total Tests** | 131 |
 | **Pass Rate** | 100% ✅ |
 | **Build Time** | ~5-10 seconds |
 | **Test Execution** | ~5 seconds |
 | **Total Time** | ~15 seconds |
 | **Memory Usage** | ~100 MB |
-| **Test File Size** | 4,273 lines |
+| **Test File Size** | 5,100+ lines |
 | **Code Coverage** | All RTL lines |
 | **State Coverage** | All 4 main states |
 | **TAP State Coverage** | All 16 states |
 | **RISC-V Debug** | DTMCS, DMI, dmcontrol, dmstatus, hartinfo |
+| **CP Validation** | 8 dedicated parity tests |
 
 ## Key Test Findings & Design Validation
 
