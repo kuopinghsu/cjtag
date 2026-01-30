@@ -21,6 +21,12 @@ CPP_SOURCES := $(TB_DIR)/tb_cjtag.cpp \
 # Verilator configuration
 VERILATOR   := verilator
 TOP_MODULE  := top
+
+# Performance optimization settings
+# Note: VPI tests require single-threaded mode for stability
+VERILATOR_THREADS ?= 2
+OPT_LEVEL ?= 2
+
 VFLAGS      := --cc \
                --exe \
                --build \
@@ -30,6 +36,10 @@ VFLAGS      := --cc \
                -Wall \
                -Wno-fatal \
                --top-module $(TOP_MODULE) \
+               --threads $(VERILATOR_THREADS) \
+               -O$(OPT_LEVEL) \
+               --x-assign fast \
+               --x-initial fast \
                -LDFLAGS "-lpthread"
 
 # Base CFLAGS (will be extended by VERBOSE flag)
@@ -91,6 +101,8 @@ help:
 	@echo "  WAVE=1         - Enable FST waveform dump"
 	@echo "  VERBOSE=1      - Show detailed build output and warnings"
 	@echo "  VPI_PORT=3333  - VPI server port (default: 3333)"
+	@echo "  VERILATOR_THREADS=2  - Parallel threads for simulation (default: 2)"
+	@echo "  OPT_LEVEL=3    - Optimization level 0-3 (default: 3)"
 	@echo ""
 	@echo "Usage Examples:"
 	@echo "  make test                    # Run automated tests"
@@ -99,6 +111,8 @@ help:
 	@echo "  make test-idcode             # Test VPI IDCODE read"
 	@echo "  make WAVE=1                  # Build and run with waveforms"
 	@echo "  VPI_PORT=5555 make vpi       # Run VPI on custom port"
+	@echo "  VERILATOR_THREADS=4 make test  # Use 4 threads for faster simulation"
+	@echo "  OPT_LEVEL=3 make build       # Maximum optimization (default)"
 	@echo "=========================================="
 
 # Test all
@@ -251,10 +265,13 @@ test-openocd-verbose:
 	@$(MAKE) VERBOSE=1 test-openocd
 
 # Test OpenOCD VPI connection
-test-openocd: build
+test-openocd:
 	@echo "=========================================="
 	@echo "Testing OpenOCD VPI Connection"
 	@echo "=========================================="
+	@echo "Note: Building with single thread for VPI stability..."
+	@$(MAKE) clean > /dev/null 2>&1
+	@VERILATOR_THREADS=1 $(MAKE) build > /dev/null 2>&1
 	@echo "Cleaning up any existing VPI servers..."
 	@pkill -9 Vtop 2>/dev/null || true
 	@pkill -9 openocd 2>/dev/null || true

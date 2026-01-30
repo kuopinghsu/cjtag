@@ -3,6 +3,15 @@
 // =============================================================================
 // Provides VPI (Verilog Procedural Interface) connection to OpenOCD
 // Implements two-wire cJTAG (TCKC/TMSC) protocol for OScan1
+//
+// THREADING LIMITATION:
+// This VPI implementation uses synchronous socket I/O with direct top->eval()
+// calls, which is INCOMPATIBLE with Verilator's --threads flag. The simulation
+// MUST be compiled with VERILATOR_THREADS=1 for this VPI server to work.
+//
+// Technical reason: Verilator's multi-threaded mode makes eval() asynchronous,
+// but this VPI protocol requires immediate synchronous responses to OpenOCD
+// commands. The Makefile automatically forces single-threaded builds for VPI tests.
 // =============================================================================
 
 #include "Vtop.h"

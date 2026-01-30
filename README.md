@@ -241,6 +241,8 @@ Environment Variables:
   WAVE=1         - Enable FST waveform dump
   VERBOSE=1      - Show detailed build output and warnings
   VPI_PORT=3333  - VPI server port (default: 3333)
+  VERILATOR_THREADS=2  - Parallel threads for simulation (default: 2)
+  OPT_LEVEL=2    - Optimization level 0-3 (default: 2)
 
 Usage Examples:
   make test                    # Run automated tests
@@ -249,6 +251,8 @@ Usage Examples:
   make test-idcode             # Test VPI IDCODE read
   make WAVE=1                  # Build and run with waveforms
   VPI_PORT=5555 make vpi       # Run VPI on custom port
+  VERILATOR_THREADS=4 make test  # Use 4 threads for faster simulation
+  OPT_LEVEL=3 make build       # Maximum optimization
 ==========================================
 ```
 
@@ -818,8 +822,7 @@ Future work: Add automated testcases in `tb/` directory.
 - [README.md](README.md) - This file: Project overview and quick start
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - Detailed design architecture
 - [docs/PROTOCOL.md](docs/PROTOCOL.md) - cJTAG protocol specification
-- [docs/TEST_GUIDE.md](docs/TEST_GUIDE.md) - Comprehensive test suite guide (121 tests)
-- [docs/CHECKLIST.md](docs/CHECKLIST.md) - Design verification checklist
+- [docs/TEST_GUIDE.md](docs/TEST_GUIDE.md) - Comprehensive test suite guide (121 tests)- [docs/PERFORMANCE.md](docs/PERFORMANCE.md) - Performance optimization guide- [docs/CHECKLIST.md](docs/CHECKLIST.md) - Design verification checklist
 
 ## License
 
@@ -879,11 +882,18 @@ Contributions welcome! Areas for improvement:
 
 ## Performance
 
-- **Simulation speed**: ~1-10 MHz equivalent TCKC frequency
+- **Build time**: ~2 seconds (optimized build)
+- **Test execution**: ~2 seconds (131 tests)
+- **Simulation speed**: 1-10 MHz equivalent TCKC frequency
+- **Throughput**: Up to 5.5M OScan1 packets/second
 - **VPI latency**: ~100-500 μs per transaction
 - **Memory usage**: ~100 MB for simulation
-- **Test execution**: ~5 seconds for 121 tests
-- **System clock**: 100MHz free-running
+- **System clock**: 100 MHz free-running
+
+**Optimization Options**:
+- `VERILATOR_THREADS=2` - Parallel simulation (2-4 threads)
+- `OPT_LEVEL=2` - Optimization level (0-3, default: 2)
+- See [docs/PERFORMANCE.md](docs/PERFORMANCE.md) for detailed optimization guide
 - [ ] Enhanced VPI protocol
 
 ## Support
@@ -903,7 +913,8 @@ For issues and questions:
 - ✅ 131 automated Verilator tests (100% passing)
 - ✅ OpenOCD VPI integration with 8 integration tests
 - ✅ IDCODE stress test with configurable iterations
-- ✅ Comprehensive documentation (Architecture, Protocol, Test Guide)
+- ✅ **Performance optimizations** (threading, optimization levels, fast X propagation)
+- ✅ Comprehensive documentation (Architecture, Protocol, Test Guide, Performance)
 - ✅ RISC-V DTM support with proper IDCODE (0x1DEAD3FF)
 - ✅ Conditional waveform generation (WAVE=1)
 - ✅ Warning-free Verilator compilation
@@ -912,12 +923,13 @@ For issues and questions:
 - IEEE 1149.7 compliant 3-bit OScan1 packet format: {nTDI, TMS, TDO}
 - 12-bit Activation Packet (OAC + EC + CP) with XOR parity validation
 - **Robust CP validation**: detects single-bit and multiple-bit errors
+- **Optimized performance**: ~4s total cycle time (build + test)
 - Runtime escape sequence detection with configurable glitch filtering
 - Dual-edge TCKC support with proper synchronization
 - Production-ready synthesizable RTL
 
 **Testing:**
-- `make test` - 131 automated tests including 8 CP validation tests
+- `make test` - 131 automated tests including 8 CP validation tests including 8 CP validation tests
 - `make test-openocd` - 8 OpenOCD integration tests
 - `make test-idcode` - IDCODE stress test (100 iterations default)
 
