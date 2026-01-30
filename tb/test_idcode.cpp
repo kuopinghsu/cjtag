@@ -10,13 +10,23 @@ public:
     VerilatedFstC* tfp;
     vluint64_t time;
     bool clk_state;
+    bool trace_enabled;
 
     TestHarness() : time(0), clk_state(false) {
         dut = new Vtop;
-        Verilated::traceEverOn(true);
-        tfp = new VerilatedFstC;
-        dut->trace(tfp, 99);
-        tfp->open("idcode_test.fst");
+
+        // Enable tracing only if WAVE environment variable is set
+        const char* wave_env = getenv("WAVE");
+        trace_enabled = (wave_env && atoi(wave_env) == 1);
+
+        if (trace_enabled) {
+            Verilated::traceEverOn(true);
+            tfp = new VerilatedFstC;
+            dut->trace(tfp, 99);
+            tfp->open("idcode_test.fst");
+        } else {
+            tfp = nullptr;
+        }
 
         dut->ntrst_i = 0;
         dut->tckc_i = 0;
@@ -36,7 +46,10 @@ public:
     }
 
     ~TestHarness() {
-        tfp->close();
+        if (tfp) {
+            tfp->close();
+            delete tfp;
+        }
         delete dut;
     }
 
@@ -44,7 +57,10 @@ public:
         clk_state = !clk_state;
         dut->clk_i = clk_state;
         dut->eval();
-        tfp->dump(time++);
+        if (tfp) {
+            tfp->dump(time);
+        }
+        time++;
     }
 
     void tckc_cycle(int tmsc_val) {
@@ -107,11 +123,45 @@ public:
     }
 };
 
+uint32_t read_idcode(TestHarness& tb) {
+    // Navigate TAP to SHIFT-DR state
+    tb.send_oscan1_packet(0, 1, nullptr); // TMS=1: RUN_TEST_IDLE -> SELECT_DR
+    tb.send_oscan1_packet(0, 0, nullptr); // TMS=0: SELECT_DR -> CAPTURE_DR
+
+    // Enter SHIFT-DR and read first bit
+    int first_bit = 0;
+    tb.send_oscan1_packet(0, 0, &first_bit); // TMS=0: CAPTURE_DR -> SHIFT-DR, reads bit 0
+
+    // Read remaining 31 bits (total 32 bits)
+    uint32_t idcode = first_bit;
+    for (int i = 1; i < 32; i++) {
+        int tdo = 0;
+        int tms = (i == 31) ? 1 : 0; // Last bit exits SHIFT-DR to EXIT1-DR
+        tb.send_oscan1_packet(0, tms, &tdo);
+        idcode |= (tdo << i);
+    }
+
+    // Return to RUN_TEST_IDLE from EXIT1-DR
+    tb.send_oscan1_packet(0, 1, nullptr); // TMS=1: EXIT1-DR -> UPDATE-DR
+    tb.send_oscan1_packet(0, 0, nullptr); // TMS=0: UPDATE-DR -> RUN_TEST_IDLE
+
+    return idcode;
+}
+
 int main(int argc, char** argv) {
     Verilated::commandArgs(argc, argv);
 
+    // Check for iteration count from environment or argument
+    const char* iter_env = getenv("IDCODE_ITERATIONS");
+    int iterations = iter_env ? atoi(iter_env) : 100;  // Default: 100 iterations
+
+    if (argc > 1) {
+        iterations = atoi(argv[1]);
+    }
+
     printf("========================================\n");
-    printf("JTAG IDCODE Test via cJTAG Bridge\n");
+    printf("JTAG IDCODE Stress Test via cJTAG Bridge\n");
+    printf("Testing %d iterations\n", iterations);
     printf("========================================\n\n");
 
     TestHarness tb;
@@ -136,43 +186,35 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // Navigate TAP to SHIFT-DR state
-    printf("Navigating to SHIFT-DR...\n");
+    // Navigate to RUN_TEST_IDLE initially
+    printf("Navigating to RUN_TEST_IDLE...\n");
     tb.send_oscan1_packet(0, 0, nullptr); // TMS=0: RESET -> RUN_TEST_IDLE
-    printf("After RUN_TEST_IDLE: tck_o=%d, tms_o=%d, tdo_o=%d\n", tb.dut->tck_o, tb.dut->tms_o, tb.dut->tdo_o);
 
-    tb.send_oscan1_packet(0, 1, nullptr); // TMS=1: RUN_TEST_IDLE -> SELECT_DR
-    printf("After SELECT_DR: tck_o=%d, tms_o=%d, tdo_o=%d\n", tb.dut->tck_o, tb.dut->tms_o, tb.dut->tdo_o);
+    // Stress test: Read IDCODE multiple times
+    printf("\nStarting stress test...\n");
+    int failures = 0;
+    for (int iter = 0; iter < iterations; iter++) {
+        uint32_t idcode = read_idcode(tb);
 
-    tb.send_oscan1_packet(0, 0, nullptr); // TMS=0: SELECT_DR -> CAPTURE_DR
-    printf("After CAPTURE_DR: tck_o=%d, tms_o=%d, tdo_o=%d\n", tb.dut->tck_o, tb.dut->tms_o, tb.dut->tdo_o);
-
-    // Enter SHIFT-DR and read first bit
-    int first_bit = 0;
-    tb.send_oscan1_packet(0, 0, &first_bit); // TMS=0: CAPTURE_DR -> SHIFT-DR, reads bit 0
-
-    // Read remaining 31 bits (total 32 bits)
-    uint32_t idcode = first_bit;
-    printf("Bit 0: %d\n", first_bit);
-    for (int i = 1; i < 32; i++) {
-        int tdo = 0;
-        int tms = (i == 31) ? 1 : 0; // Last bit exits SHIFT-DR
-        tb.send_oscan1_packet(0, tms, &tdo);
-        idcode |= (tdo << i);
-        if (i < 8 || i % 8 == 7) {
-            printf("Bit %d: %d\n", i, tdo);
+        if (idcode != 0x1DEAD3FF) {
+            printf("❌ Iteration %d FAILED: Got 0x%08X, Expected 0x1DEAD3FF\n", iter + 1, idcode);
+            failures++;
+        } else if (iter % 10 == 0 || iter == iterations - 1) {
+            printf("✓ Iteration %d: 0x%08X\n", iter + 1, idcode);
         }
     }
 
     printf("\n========================================\n");
-    printf("IDCODE Result: 0x%08X\n", idcode);
+    printf("Stress Test Complete: %d iterations\n", iterations);
+    printf("Passed: %d\n", iterations - failures);
+    printf("Failed: %d\n", failures);
     printf("========================================\n");
 
-    if (idcode == 0x1DEAD3FF) {
-        printf("✅ SUCCESS: IDCODE matches expected value!\n");
+    if (failures == 0) {
+        printf("✅ SUCCESS: All iterations passed!\n");
         return 0;
     } else {
-        printf("❌ FAILURE: Expected 0x1DEAD3FF\n");
+        printf("❌ FAILURE: %d iterations failed\n", failures);
         return 1;
     }
 }

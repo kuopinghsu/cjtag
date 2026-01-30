@@ -221,7 +221,7 @@ VPI_PORT=5555 make vpi
 | `make build` | Build Verilator simulation |
 | `make test` | Run automated test suite |
 | `make test-openocd` | Test OpenOCD connection to VPI |
-| `make test-vpi` | Test VPI IDCODE read |
+| `make test-idcode` | Test VPI IDCODE read |
 | `make run` | Run simulation (no waveform) |
 | `make sim` | Run simulation with waveform |
 | `make WAVE=1` | Run simulation with FST waveform dump |
@@ -239,7 +239,7 @@ VPI_PORT=5555 make vpi
 make test                    # Run automated tests
 make VERBOSE=1 test          # Run tests with verbose output
 make test-openocd            # Test OpenOCD VPI connection
-make test-vpi                # Test VPI IDCODE read
+make test-idcode             # Test VPI IDCODE read
 make WAVE=1                  # Build and run with waveforms
 VPI_PORT=5555 make vpi       # Run VPI on custom port
 ```
@@ -852,7 +852,7 @@ Contributions welcome! Areas for improvement:
 
 **Test Coverage:**
 - **123 Verilator automated tests** (100% passing ✅)
-- **8 OpenOCD integration tests** (100% passing ✅)  
+- **8 OpenOCD integration tests** (100% passing ✅)
 - **1 VPI IDCODE verification test** (passing ✅)
 - **132 total tests** ensuring production quality
 
@@ -870,6 +870,31 @@ Contributions welcome! Areas for improvement:
 For issues and questions:
 - Review `openocd/patched/README.md` for OpenOCD setup
 - Open an issue on the project repository
+
+## Changelog
+
+### v1.0 (2026-01-30)
+**Initial Release**
+- ✅ Complete IEEE 1149.7 OScan1 3-bit packet format implementation
+- ✅ Full escape sequence support (4-5, 6-7, 8+ toggles for deselection/selection/reset)
+- ✅ 123 automated Verilator tests (100% passing)
+- ✅ OpenOCD VPI integration with 8 integration tests
+- ✅ IDCODE stress test with configurable iterations
+- ✅ Comprehensive documentation (Architecture, Protocol, Test Guide)
+- ✅ RISC-V DTM support with proper IDCODE (0x1DEAD3FF)
+- ✅ Conditional waveform generation (WAVE=1)
+- ✅ Warning-free Verilator compilation
+
+**Key Features:**
+- IEEE 1149.7 compliant 3-bit OScan1 packet format: {nTDI, TMS, TDO}
+- Runtime escape sequence detection with configurable glitch filtering
+- Dual-edge TCKC support with proper synchronization
+- Production-ready synthesizable RTL
+
+**Testing:**
+- `make test` - 123 automated tests
+- `make test-openocd` - 8 OpenOCD integration tests
+- `make test-idcode` - IDCODE stress test (100 iterations default)
 
 ---
 

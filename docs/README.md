@@ -94,7 +94,7 @@ This directory contains comprehensive documentation for the cJTAG Bridge project
 
 **Complete IEEE 1149.7 Escape Sequence Support:**
 - 4-5 toggles: Deselection (OSCAN1 → OFFLINE)
-- 6-7 toggles: Selection (OFFLINE → ONLINE_ACT)  
+- 6-7 toggles: Selection (OFFLINE → ONLINE_ACT)
 - 8+ toggles: Reset (any state → OFFLINE)
 - Hardware reset (nTRST) supported
 - All escape sequences validated by 123 comprehensive tests
@@ -122,7 +122,7 @@ Check [ARCHITECTURE.md](ARCHITECTURE.md) for system design:
 Follow [TEST_GUIDE.md](TEST_GUIDE.md) to validate:
 ```bash
 make test              # 123 Verilator tests
-make test-vpi          # VPI IDCODE test
+make test-idcode       # VPI IDCODE test
 make test-openocd      # 8 OpenOCD integration tests
 ```
 Expected: **123/123 Verilator tests passed ✅**

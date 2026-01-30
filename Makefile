@@ -65,7 +65,7 @@ VFLAGS += -CFLAGS "$(CFLAGS_BASE)"
 # Targets
 # =============================================================================
 
-.PHONY: all clean build run sim vpi test test-openocd test-vpi help
+.PHONY: all clean build run sim vpi test test-openocd test-idcode help
 
 # Default target
 all: build
@@ -79,7 +79,7 @@ help:
 	@echo "  make build        - Build Verilator simulation"
 	@echo "  make test         - Run automated test suite"
 	@echo "  make test-openocd - Test OpenOCD connection to VPI"
-	@echo "  make test-vpi     - Test VPI IDCODE read"
+	@echo "  make test-idcode  - Test VPI IDCODE read"
 	@echo "  make run          - Run simulation (no waveform)"
 	@echo "  make sim          - Run simulation with waveform"
 	@echo "  make WAVE=1       - Run simulation with FST waveform dump"
@@ -96,7 +96,7 @@ help:
 	@echo "  make test                    # Run automated tests"
 	@echo "  make VERBOSE=1 test          # Run tests with verbose output"
 	@echo "  make test-openocd            # Test OpenOCD VPI connection"
-	@echo "  make test-vpi                # Test VPI IDCODE read"
+	@echo "  make test-idcode             # Test VPI IDCODE read"
 	@echo "  make WAVE=1                  # Build and run with waveforms"
 	@echo "  VPI_PORT=5555 make vpi       # Run VPI on custom port"
 	@echo "=========================================="
@@ -371,7 +371,7 @@ test-openocd: build
 	fi
 
 # Test VPI with IDCODE read
-test-vpi: $(IDCODE_TEST)
+test-idcode: $(IDCODE_TEST)
 	@echo "=========================================="
 	@echo "Testing VPI IDCODE Read"
 	@echo "=========================================="
@@ -382,18 +382,22 @@ test-vpi: $(IDCODE_TEST)
 		echo "✅ VPI IDCODE Test PASSED"; \
 		echo "========================================"; \
 		echo "IDCODE: 0x1DEAD3FF verified successfully"; \
-		echo "Waveform saved to: idcode_test.fst"; \
-		echo "View with: gtkwave idcode_test.fst"; \
+		if [ "$(WAVE)" = "1" ]; then \
+			echo "Waveform saved to: idcode_test.fst"; \
+			echo "View with: gtkwave idcode_test.fst"; \
+		fi; \
 	else \
 		echo ""; \
 		echo "========================================"; \
 		echo "❌ VPI IDCODE Test FAILED"; \
 		echo "========================================"; \
-		echo "Check idcode_test.fst waveform for details"; \
+		if [ "$(WAVE)" = "1" ]; then \
+			echo "Check idcode_test.fst waveform for details"; \
+		fi; \
 		exit 1; \
 	fi
 
 # =============================================================================
 # Phony targets (non-file targets)
 # =============================================================================
-.PHONY: all build run sim vpi clean help lint wave status test-openocd test-vpi
+.PHONY: all build run sim vpi clean help lint wave status test-openocd test-idcode

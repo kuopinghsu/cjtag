@@ -44,7 +44,7 @@ tb/
 - Comprehensive coverage of all protocol states and edge cases
 
 ### test_idcode.cpp
-VPI IDCODE verification test that exercises the VPI interface to read and verify the JTAG IDCODE register directly. Used by `make test-vpi`.
+VPI IDCODE verification test that exercises the VPI interface to read and verify the JTAG IDCODE register directly. Used by `make test-idcode`.
 
 **Purpose:**
 - VPI interface validation

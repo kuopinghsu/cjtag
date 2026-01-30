@@ -834,7 +834,7 @@ Key signals to observe in `cjtag.fst`:
 |--------|-------------|
 | `make` or `make build` | Build Verilator simulation |
 | `make test` | Run 121 Verilator automated tests |
-| `make test-vpi` | Run VPI IDCODE verification test |
+| `make test-idcode` | Run VPI IDCODE verification test |
 | `make test-openocd` | Run 8 OpenOCD integration tests |
 | `make test-trace` | Run tests with waveform generation |
 | `make run` | Run simulation (no waveform) |

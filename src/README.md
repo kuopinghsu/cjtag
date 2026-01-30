@@ -123,7 +123,7 @@ make build
 ### Run Tests
 ```bash
 make test              # 121 Verilator unit/integration tests
-make test-vpi          # VPI IDCODE verification test
+make test-idcode       # VPI IDCODE verification test
 make test-openocd      # 8 OpenOCD integration tests
 ```
 
