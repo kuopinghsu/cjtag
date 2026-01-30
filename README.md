@@ -216,32 +216,38 @@ VPI_PORT=5555 make vpi
 
 ### Makefile Targets
 
-| Target | Description |
-|--------|-------------|
-| `make build` | Build Verilator simulation |
-| `make test` | Run automated test suite |
-| `make test-openocd` | Test OpenOCD connection to VPI |
-| `make test-idcode` | Test VPI IDCODE read |
-| `make run` | Run simulation (no waveform) |
-| `make sim` | Run simulation with waveform |
-| `make WAVE=1` | Run simulation with FST waveform dump |
-| `make vpi` | Run simulation and wait for OpenOCD |
-| `make clean` | Clean build artifacts |
-| `make help` | Show this help message |
+Use `make help` to see all available targets:
 
-**Environment Variables:**
-- `WAVE=1` - Enable FST waveform dump
-- `VERBOSE=1` - Show detailed build output and warnings
-- `VPI_PORT=3333` - VPI server port (default: 3333)
+```
+==========================================
+cJTAG Bridge Makefile
+==========================================
+Targets:
+  make all          - Test all avaliable tests
+  make build        - Build Verilator simulation
+  make test         - Run automated test suite
+  make test-openocd - Test OpenOCD connection to VPI
+  make test-idcode  - Test VPI IDCODE read
+  make run          - Run simulation (no waveform)
+  make sim          - Run simulation with waveform
+  make WAVE=1       - Run simulation with FST waveform dump
+  make vpi          - Run simulation and wait for OpenOCD
+  make clean        - Clean build artifacts
+  make help         - Show this help message
 
-**Usage Examples:**
-```bash
-make test                    # Run automated tests
-make VERBOSE=1 test          # Run tests with verbose output
-make test-openocd            # Test OpenOCD VPI connection
-make test-idcode             # Test VPI IDCODE read
-make WAVE=1                  # Build and run with waveforms
-VPI_PORT=5555 make vpi       # Run VPI on custom port
+Environment Variables:
+  WAVE=1         - Enable FST waveform dump
+  VERBOSE=1      - Show detailed build output and warnings
+  VPI_PORT=3333  - VPI server port (default: 3333)
+
+Usage Examples:
+  make test                    # Run automated tests
+  make VERBOSE=1 test          # Run tests with verbose output
+  make test-openocd            # Test OpenOCD VPI connection
+  make test-idcode             # Test VPI IDCODE read
+  make WAVE=1                  # Build and run with waveforms
+  VPI_PORT=5555 make vpi       # Run VPI on custom port
+==========================================
 ```
 
 ## Module Descriptions

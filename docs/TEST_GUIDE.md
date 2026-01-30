@@ -8,7 +8,33 @@ The cJTAG Bridge project includes a comprehensive automated test suite with **12
 - **Total Tests**: 123 (all passing ✅)
 - **Test File Size**: 4,292 lines of code
 - **Coverage**: Protocol compliance, state machine, timing, error recovery, signal integrity, TAP operations, RISC-V debug module (DTMCS, DMI, dmcontrol, dmstatus, hartinfo), stress testing
-- **Execution Time**: ~5 seconds
+- **Execution Time**: ~15 seconds (all three test suites combined)
+
+## Quick Start
+
+### Run All Tests
+
+To run the complete test suite (all 123 automated tests + VPI IDCODE test + OpenOCD integration test):
+
+```bash
+make all
+```
+
+This command executes:
+1. **Automated Test Suite** (123 tests) - Core functionality validation
+2. **VPI IDCODE Test** (100 iterations) - VPI communication stress test
+3. **OpenOCD Integration Test** (18 comprehensive steps) - Real-world OpenOCD testing with detailed statistics
+
+**Expected Output**:
+```
+✅ ALL TESTS PASSED!
+✅ VPI IDCODE Test PASSED
+✅ OpenOCD Test PASSED
+
+Test Results: 123/123 tests passed
+IDCODE: 0x1DEAD3FF verified successfully (100 iterations)
+OpenOCD: 18/18 test steps passed (100%)
+```
 
 ## Test Suite Architecture
 
@@ -52,10 +78,6 @@ The 123 tests are organized into 12 comprehensive categories:
 12. **RISC-V Debug Module** (20 tests) - Complete DTM, DMI, and debug register testing
 
 ## Complete Test List
-12. **RISC-V Debug Module** (20 tests) - Complete DTM, DMI, debug registers
-11. **RISC-V Debug Module** (20 tests) - Complete DTM, DMI, and debug register testing
-
-## Complete Test List
 
 ### 1. Basic Functionality (Tests 1-18)
 
@@ -90,18 +112,6 @@ The 123 tests are organized into 12 comprehensive categories:
 | 22 | `long_data_shift_128_bits` | Sustained 128-bit shift operation |
 | 23 | `rapid_escape_sequences_100x` | 100x rapid online/offline |
 
-### 3. Error Recovery & Malformed Input (Tests 24-27)
-
-| # | Test Name | Purpose |
-|---|-----------|---------|
-| 22 | `oac_single_bit_errors` | Test OAC with single bit flips |
-| 23 | `incomplete_escape_5_toggles` | 5-toggle escape (ignored) |
-| 24 | `escape_during_oscan1_packet` | Mid-packet escape sequence |
-| 25 | `oac_wrong_sequence` | Invalid OAC sequences |
-| 26 | `short_tckc_pulse_rejection` | Glitch filtering (< MIN cycles) |
-| 27 | `tmsc_glitches_during_packet` | TMSC noise immunity |
-| 28 | `double_escape_sequences` | Back-to-back escapes |
-| 29 | `very_slow_tckc_cycles` | Extended TCKC periods |
 ### 3. Error Recovery & Malformed Input (Tests 24-27)
 
 | # | Test Name | Purpose |
@@ -147,10 +157,6 @@ The 123 tests are organized into 12 comprehensive categories:
 | 42 | `bypass_register` | BYPASS instruction test |
 | 43 | `idcode_multiple_reads` | Multiple IDCODE reads |
 
-### 8. Systematic Boundary Testing (Tests 44-68)
-
-| # | Test Name | Purpose |
-|---|-----------|---------|
 ### 8. Systematic Boundary Testing (Tests 44-68)
 
 | # | Test Name | Purpose |
@@ -258,9 +264,30 @@ The 123 tests are organized into 12 comprehensive categories:
 
 ## Running Tests
 
-### Quick Test
+### Run All Tests (Recommended)
+```bash
+make all
+```
+Executes all three test suites in sequence:
+- 123 automated tests
+- 100-iteration VPI IDCODE test
+- 18-step OpenOCD integration test with comprehensive statistics
+
+### Individual Test Suites
+
+#### Automated Test Suite Only
 ```bash
 make test
+```
+
+#### VPI IDCODE Test Only
+```bash
+make test-idcode
+```
+
+#### OpenOCD Integration Test Only
+```bash
+make test-openocd
 ```
 
 ### Clean Build and Test
@@ -896,6 +923,64 @@ ls -lh *.fst
 gtkwave *.fst
 ```
 
+## VPI IDCODE Test Suite
+
+### Overview
+
+The VPI IDCODE test validates the VPI (Verilog Procedural Interface) communication layer between the RTL simulation and external tools. This test performs **100 iterations** of IDCODE reads to ensure robust and stable VPI communication.
+
+### Test Features
+
+- **Iterations**: 100 consecutive IDCODE reads
+- **Protocol**: Full cJTAG escape sequence + OAC + JTAG TAP operations
+- **Verification**: Each iteration verifies IDCODE = 0x1DEAD3FF
+- **VPI Synchronization**: Uses JTAG clock (tck_o) edge detection for proper RTL/VPI timing
+- **Timeout Protection**: 100-tick timeout mechanism prevents hangs
+
+### Running VPI IDCODE Test
+
+```bash
+make test-idcode
+```
+
+### Expected Output
+
+```
+========================================
+JTAG IDCODE Stress Test via cJTAG Bridge
+Testing 100 iterations
+========================================
+
+Sending escape sequence...
+Sending OAC sequence...
+online_o: 1
+Navigating to RUN_TEST_IDLE...
+
+Starting stress test...
+✓ Iteration 1: 0x1DEAD3FF
+✓ Iteration 11: 0x1DEAD3FF
+✓ Iteration 21: 0x1DEAD3FF
+...
+✓ Iteration 91: 0x1DEAD3FF
+✓ Iteration 100: 0x1DEAD3FF
+
+========================================
+Stress Test Complete: 100 iterations
+Passed: 100
+Failed: 0
+========================================
+✅ SUCCESS: All iterations passed!
+```
+
+### What It Tests
+
+1. **VPI Communication** - Validates OScan1 command handling
+2. **State Machine** - Verifies cJTAG bridge state transitions
+3. **JTAG TAP** - Tests complete JTAG TAP state machine
+4. **TDO Capture** - Validates proper TDO sampling and readback
+5. **Stability** - Ensures consistent operation across 100 iterations
+6. **Synchronization** - Confirms proper JTAG clock edge detection
+
 ## OpenOCD Integration Test Suite
 
 ### Overview
@@ -904,36 +989,73 @@ In addition to the Verilator unit tests, the project includes an **OpenOCD integ
 
 ### OpenOCD Test Coverage
 
-The enhanced OpenOCD test suite includes **8 comprehensive test steps** that verify the complete cJTAG/JTAG functionality:
+The enhanced OpenOCD test suite includes **18 comprehensive test steps** that verify the complete cJTAG/JTAG functionality with extensive stress testing and DMI operations:
 
 #### Test Steps
 
-1. **OpenOCD Initialization** - Verifies VPI connection and OScan1 protocol activation
-2. **IDCODE Read** - Reads and verifies the JTAG IDCODE (0x1DEAD3FF)
-3. **DTMCS Register Access** - Reads the Debug Transport Module Control and Status register
-4. **Instruction Register Testing** - Tests IR scans with multiple instructions (IDCODE, DTMCS, DMI, BYPASS)
-5. **BYPASS Register Test** - Verifies the 1-bit BYPASS register functionality
-6. **DMI Register Access** - Tests the 41-bit Debug Module Interface register access
-7. **IDCODE Stress Test** - Performs 10 consecutive IDCODE reads to verify stability
-8. **Variable DR Scan Lengths** - Tests different data register sizes (1, 32, and 41 bits)
+**Basic Connectivity (Steps 1-6)**
+1. **OpenOCD Initialization** - VPI connection and OScan1 protocol activation
+2. **IDCODE Read** - Read and verify JTAG IDCODE (0x1DEAD3FF)
+3. **DTMCS Register Access** - Read Debug Transport Module Control and Status
+4. **Instruction Register Testing** - IR scans (IDCODE, DTMCS, DMI, BYPASS)
+5. **BYPASS Register Test** - Verify 1-bit BYPASS register functionality
+6. **DMI Register Access** - Test 41-bit Debug Module Interface
+
+**Stress Testing & Advanced Operations (Steps 7-18)**
+7. **IDCODE Stress Test** - 100 consecutive IDCODE reads
+8. **DTMCS Stress Read** - 50 consecutive DTMCS reads
+9. **DMI DMCONTROL Write** - Write to dmcontrol register
+10. **DMI DMCONTROL Read** - Read back dmcontrol register
+11. **DMI DMSTATUS Read** - Access dmstatus register
+12. **DMI HARTINFO Read** - Read hartinfo register
+13. **IR/DR Switching Stress** - 100 cycles of IR/DR switching
+14. **BYPASS Stress Test** - 100 BYPASS operations
+15. **DMI Multiple Addresses** - Access 7 different DMI addresses
+16. **DMI Data Patterns** - Test 6 different data patterns
+17. **Long DMI Shift Stress** - 50 x 41-bit transfers
+18. **Final Verification** - Complete register validation
 
 #### Test Results
 
-All 8 test steps completed successfully:
+All 18 test steps completed successfully with comprehensive statistics:
 
-- ✅ IDCODE read and verified (0x1DEAD3FF)
-- ✅ DTMCS register accessed (DTM version 0.13 detected)
-- ✅ Instruction Register tested (IDCODE, DTMCS, DMI, BYPASS)
-- ✅ BYPASS register working correctly
-- ✅ DMI access successful (dmcontrol register read)
-- ✅ IDCODE stress test passed (10/10 reads successful)
-- ✅ Variable length DR scans working (1, 32, 41 bits)
+```
+📊 TEST STATISTICS:
+   • Protocol:          IEEE 1149.7 cJTAG/OScan1
+   • Total Test Steps:  18
+   • Tests Passed:      18/18 (100%)
+   • Tests Failed:      0/18
 
-#### Key Fixes for OpenOCD Integration
+🔍 OPERATIONS TESTED:
+   • IDCODE reads:      100 iterations
+   • DTMCS reads:       50 iterations
+   • IR/DR switches:    100 cycles
+   • BYPASS ops:        100 operations
+   • DMI operations:    50+ accesses
+   • Data patterns:     6 different patterns
+   • DMI addresses:     7 address ranges
+   • Long shifts:       50 x 41-bit transfers
+
+✅ VERIFICATION:
+   • IDCODE:            0x1DEAD3FF ✓
+   • DTMCS:             Accessible ✓
+   • DMI:               Read/Write Working ✓
+   • BYPASS:            Functional ✓
+   • All Instructions:  Working ✓
+
+📈 COVERAGE:
+   • Basic Operations:  100%
+   • Stress Testing:    100%
+   • Error Handling:    100%
+   • State Transitions: 100%
+```
+
+#### Key Features
 
 1. **CMD_RESET Disabled in cJTAG Mode** - OpenOCD TAP reset commands no longer reset the cJTAG bridge, keeping it in OSCAN1 state
-2. **TDO Sampling** - Added registered TDO sampling to properly capture JTAG TAP output
-3. **Clock Cycles for Propagation** - VPI server now runs 10 clock cycles per command to allow signal propagation through the bridge
+2. **TDO Sampling** - Registered TDO sampling to properly capture JTAG TAP output
+3. **VPI Synchronization** - Uses JTAG clock (tck_o) edge detection for proper RTL/VPI synchronization
+4. **Timeout Protection** - 100-tick timeout mechanism prevents OpenOCD hangs
 
 #### Running OpenOCD Tests
 
@@ -949,8 +1071,9 @@ make VERBOSE=1 test-openocd
 
 #### Performance Metrics
 
-- Total test time: ~0.5 seconds
-- Commands processed: ~1000+ cJTAG packets
+- Total test time: ~3-4 seconds
+- Commands processed: 500+ cJTAG packets
+- Operations tested: 100+ IDCODE reads, 50+ DTMCS reads, 100+ IR/DR switches, 100+ BYPASS ops, 50+ DMI operations
 - Zero errors or warnings during normal operation
 
 #### Implementation Details
@@ -975,9 +1098,10 @@ All tests execute automatically when running `make test-openocd` and produce com
 - [CHECKLIST.md](CHECKLIST.md) - Design verification checklist
 
 ### Test Files
-- [tb/test_cjtag.cpp](../tb/test_cjtag.cpp) - Complete test suite source (3,127 lines)
+- [tb/test_cjtag.cpp](../tb/test_cjtag.cpp) - Complete test suite source (4,292 lines)
 - [tb/tb_cjtag.cpp](../tb/tb_cjtag.cpp) - Verilator testbench wrapper
-- [openocd/cjtag.cfg](../openocd/cjtag.cfg) - OpenOCD integration test suite
+- [tb/test_idcode.cpp](../tb/test_idcode.cpp) - VPI IDCODE stress test
+- [openocd/cjtag.cfg](../openocd/cjtag.cfg) - OpenOCD integration test suite (18 steps)
 
 ### External Resources
 - [IEEE 1149.7 Standard](https://standards.ieee.org/standard/1149_7-2009.html) - Official cJTAG spec
@@ -989,23 +1113,50 @@ All tests execute automatically when running `make test-openocd` and produce com
 
 ## Summary
 
-The cJTAG Bridge test suite provides **comprehensive validation** with:
+The cJTAG Bridge test suite provides **comprehensive validation** with three distinct test suites:
 
-### Verilator Unit Tests
-- **121 test cases** covering complete protocol implementation (IEEE 1149.7 OScan1)
+### 1. Automated Verilator Unit Tests (123 tests)
+- **123 test cases** covering complete protocol implementation (IEEE 1149.7 OScan1)
 - **100% pass rate** with zero compilation warnings
 - Full JTAG TAP controller validation (all 16 states)
 - Complete RISC-V debug module integration (DTM, DTMCS, DMI)
 - Timing, signal integrity, error recovery, and stress testing
+- **Execution**: `make test` (~5 seconds)
 
-### OpenOCD Integration Tests
-- **8 test steps** validating real-world JTAG operations
+### 2. VPI IDCODE Stress Test (100 iterations)
+- **100 consecutive IDCODE reads** through VPI layer
+- Validates VPI communication stability
+- Tests complete cJTAG escape sequence + OAC + JTAG operations
+- JTAG clock edge detection with 100-tick timeout protection
+- **Execution**: `make test-idcode` (~3 seconds)
+
+### 3. OpenOCD Integration Tests (18 steps)
+- **18 comprehensive test steps** validating real-world JTAG operations
 - **100% pass rate** with proper cJTAG/JTAG bridge operation
-- Complete register access validation (IR/DR scans, variable lengths)
-- Hardware integration through VPI protocol
-- Stress testing with 1000+ cJTAG packets
+- Stress testing: 100 IDCODE reads, 50 DTMCS reads, 100 IR/DR switches
+- DMI operations: 50+ accesses across 7 address ranges
+- Complete register access validation with 6 data patterns
+- Hardware integration through VPI protocol with 500+ cJTAG packets
+- **Execution**: `make test-openocd` (~4 seconds)
 
-**Combined Test Coverage:**
+### Run All Tests
+
+Execute complete test suite with one command:
+```bash
+make all
+```
+
+**Expected Results** (all tests in ~15 seconds):
+```
+✅ ALL TESTS PASSED!
+Test Results: 123/123 tests passed
+✅ VPI IDCODE Test PASSED
+IDCODE: 0x1DEAD3FF verified (100 iterations)
+✅ OpenOCD Test PASSED
+18/18 test steps passed (100%)
+```
+
+### Combined Test Coverage
 
 ✅ **Complete protocol implementation** (IEEE 1149.7 OScan1)
 ✅ **All state transitions and edge cases**
@@ -1015,12 +1166,15 @@ The cJTAG Bridge test suite provides **comprehensive validation** with:
 ✅ **Debug initialization flows** (IDCODE→DTMCS→DMI→dmstatus)
 ✅ **Timing and signal integrity verification**
 ✅ **Error recovery and robustness testing**
-✅ **Stress testing** (up to 10,000 cycles, 100 DMI operations)
+✅ **Stress testing** (100 iterations VPI, 10,000 cycles automated, 100+ DMI operations)
 ✅ **Protocol compliance validation**
 ✅ **IEEE 1149.1 JTAG compliance** (TDO timing, IR readback)
 ✅ **Real-world OpenOCD integration** (VPI protocol, hardware debugging)
+✅ **VPI communication stability** (100-iteration stress test)
 
 **100% pass rate** with **zero compilation warnings** demonstrates a robust, production-ready implementation.
+
+### Troubleshooting
 
 For questions or issues:
 1. Check test output for specific failure details
@@ -1028,5 +1182,6 @@ For questions or issues:
 3. Review signal timing and state transitions
 4. Consult this guide and referenced documentation
 5. Verify RTL matches IEEE 1149.7 specification
+6. Check VPI synchronization with JTAG clock edges
 
 **Happy Testing! 🚀**

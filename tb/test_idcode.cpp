@@ -23,7 +23,7 @@ public:
             Verilated::traceEverOn(true);
             tfp = new VerilatedFstC;
             dut->trace(tfp, 99);
-            tfp->open("idcode_test.fst");
+            tfp->open("cjtag.fst");
         } else {
             tfp = nullptr;
         }

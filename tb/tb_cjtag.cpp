@@ -139,14 +139,15 @@ int main(int argc, char** argv) {
     // No automatic TCKC toggling - OpenOCD has full control for precise timing
     //
     // CLOCK SYSTEM:
-    // - System clock: 100MHz (10ns period)
-    // - TCKC: Controlled by OpenOCD, not free-running
-    // - VPI commands checked every 100 system clocks (1us)
+    // - System clock: 100MHz free-running (represents real IC clock)
+    // - TCKC: Controlled by OpenOCD via VPI commands
+    // - VPI: Checked periodically, RTL processes signals between checks
+    // - VPI reads TMSC_O directly from RTL state machine (no clock generation)
     //
     enum EventType { SYS_CLK_LOW, SYS_CLK_HIGH, VPI_CHECK };
     EventType next_event = SYS_CLK_LOW;
-    int sys_clocks_since_vpi = 0;
-    const int sys_clocks_per_vpi = 100;  // Check VPI every 100 sys clocks (1us)
+    int clocks_since_vpi = 0;
+    const int clocks_per_vpi = 10;  // Check VPI every 10 clocks (balance speed vs RTL processing time)
     vluint64_t tick_count = 0;
 
     while (!g_shutdown && !Verilated::gotFinish()) {
@@ -173,12 +174,12 @@ int main(int argc, char** argv) {
                     tfp->dump(main_time);
                     if (main_time % 1000 == 0) tfp->flush();
                 }
-                contextp->timeInc(1);  // Advance Verilator time for $time
+                contextp->timeInc(1);
                 main_time++;
-                sys_clocks_since_vpi++;
+                clocks_since_vpi++;
 
-                // Time to check VPI?
-                if (sys_clocks_since_vpi >= sys_clocks_per_vpi) {
+                // Check VPI every N clocks (gives RTL time to process)
+                if (clocks_since_vpi >= clocks_per_vpi) {
                     next_event = VPI_CHECK;
                 } else {
                     next_event = SYS_CLK_LOW;
@@ -187,12 +188,13 @@ int main(int argc, char** argv) {
 
             case VPI_CHECK:
                 // Process VPI commands from OpenOCD
-                // OpenOCD directly controls TCKC via CMD_OSCAN1_RAW
+                // VPI reads TMSC_O directly from RTL (no clock generation)
+                // Free-running clocks between VPI checks give RTL time to process
                 if (!jtag_vpi_tick(top)) {
                     printf("VPI requested simulation stop\n");
                     g_shutdown = true;
                 }
-                sys_clocks_since_vpi = 0;
+                clocks_since_vpi = 0;
                 next_event = SYS_CLK_LOW;
                 break;
         }

@@ -68,7 +68,6 @@ VFLAGS += -CFLAGS "$(CFLAGS_BASE)"
 .PHONY: all clean build run sim vpi test test-openocd test-idcode help
 
 # Default target
-all: build
 
 # Help message
 help:
@@ -76,6 +75,7 @@ help:
 	@echo "cJTAG Bridge Makefile"
 	@echo "=========================================="
 	@echo "Targets:"
+	@echo "  make all          - Test all avaliable tests"
 	@echo "  make build        - Build Verilator simulation"
 	@echo "  make test         - Run automated test suite"
 	@echo "  make test-openocd - Test OpenOCD connection to VPI"
@@ -100,6 +100,9 @@ help:
 	@echo "  make WAVE=1                  # Build and run with waveforms"
 	@echo "  VPI_PORT=5555 make vpi       # Run VPI on custom port"
 	@echo "=========================================="
+
+# Test all
+all: test test-idcode test-openocd
 
 # Build the simulation
 build: $(VERILATOR_EXE)
@@ -358,7 +361,9 @@ test-openocd: build
 			echo "✅ OpenOCD Test PASSED"; \
 			echo "========================================"; \
 			echo "Logs: openocd_test.log, openocd_output.log"; \
-			grep -E "ONLINE_ACT.*OSCAN1|1dead3ff" openocd_test.log 2>/dev/null | head -3 || true; \
+			echo ""; \
+			sed -n '/##TEST_STATS_BEGIN##/,/##TEST_STATS_END##/p' openocd_output.log | \
+				grep -v "##TEST_STATS" || true; \
 		else \
 			echo "❌ OpenOCD Test FAILED"; \
 			echo "========================================"; \
@@ -383,8 +388,8 @@ test-idcode: $(IDCODE_TEST)
 		echo "========================================"; \
 		echo "IDCODE: 0x1DEAD3FF verified successfully"; \
 		if [ "$(WAVE)" = "1" ]; then \
-			echo "Waveform saved to: idcode_test.fst"; \
-			echo "View with: gtkwave idcode_test.fst"; \
+			echo "Waveform saved to: cjtag.fst"; \
+			echo "View with: gtkwave cjtag.fst"; \
 		fi; \
 	else \
 		echo ""; \
@@ -392,7 +397,7 @@ test-idcode: $(IDCODE_TEST)
 		echo "❌ VPI IDCODE Test FAILED"; \
 		echo "========================================"; \
 		if [ "$(WAVE)" = "1" ]; then \
-			echo "Check idcode_test.fst waveform for details"; \
+			echo "Check cjtag.fst waveform for details"; \
 		fi; \
 		exit 1; \
 	fi

@@ -54,10 +54,19 @@ public:
     uint8_t tmsc_out;
     int free_run_cycles;  // Number of TCKC cycles to free-run (0 = OpenOCD controlled)
 
+    // State machine for waiting on tck_o edge
+    bool waiting_for_tck_edge;
+    uint8_t tck_initial_state;
+    struct vpi_cmd pending_response;
+    int wait_counter;  // Counter for how many ticks we've waited
+    static const int MAX_WAIT_TICKS = 100;  // Maximum ticks to wait for tck_o edge
+
     JtagVpi(int port_num = 3333) : port(port_num), connected(false),
-                                    cjtag_mode(true), tckc_state(0), tmsc_out(0), free_run_cycles(0) {
+                                    cjtag_mode(true), tckc_state(0), tmsc_out(0), free_run_cycles(0),
+                                    waiting_for_tck_edge(false), tck_initial_state(0), wait_counter(0) {
         server_fd = -1;
         client_fd = -1;
+        memset(&pending_response, 0, sizeof(pending_response));
     }
 
     ~JtagVpi() {
@@ -140,70 +149,84 @@ public:
     bool process_commands(Vtop* top) {
         if (!connected) return true;
 
-        // Check if data available with a very short timeout
+        // First, check if we're waiting for a tck_o edge from a previous command
+        if (waiting_for_tck_edge) {
+            wait_counter++;
+
+            if (top->tck_o != tck_initial_state) {
+                // tck_o edge detected! Now read TMSC_O and send response
+                #ifdef VERBOSE
+                printf("[VPI] tck_o edge detected after %d ticks (was %d, now %d), sending response\n",
+                       wait_counter, tck_initial_state, top->tck_o);
+                #endif
+
+                // Read TMSC_O after JTAG clock edge (real hardware timing)
+                pending_response.buffer_in[0] = top->tmsc_o & 0x01;
+
+                // Send response
+                send(client_fd, &pending_response, sizeof(pending_response), 0);
+
+                // Clear waiting state
+                waiting_for_tck_edge = false;
+                wait_counter = 0;
+            } else if (wait_counter >= MAX_WAIT_TICKS) {
+                // Timeout - send response anyway to avoid hanging OpenOCD
+                #ifdef VERBOSE
+                printf("[VPI] Timeout after %d ticks, tck_o didn't change, sending response anyway\n", wait_counter);
+                #endif
+
+                // Read current TMSC_O state
+                pending_response.buffer_in[0] = top->tmsc_o & 0x01;
+
+                // Send response
+                send(client_fd, &pending_response, sizeof(pending_response), 0);
+
+                // Clear waiting state
+                waiting_for_tck_edge = false;
+                wait_counter = 0;
+            }
+            // Still waiting, return and let testbench continue running clocks
+            return true;
+        }
+
+        // Check if data available (non-blocking - immediate return)
         fd_set read_fds;
         struct timeval tv;
         tv.tv_sec = 0;
-        tv.tv_usec = 100;  // 100 microseconds to allow data to arrive
+        tv.tv_usec = 0;  // Non-blocking: return immediately
 
         FD_ZERO(&read_fds);
         FD_SET(client_fd, &read_fds);
 
         int select_result = select(client_fd + 1, &read_fds, NULL, NULL, &tv);
 
-        #ifdef VERBOSE
-        static int check_count = 0;
-        if (check_count++ % 50 == 0) {  // Every 50th check
-            printf("VPI: select() returned %d (check #%d)\n", select_result, check_count);
-        }
-        #endif
-
         if (select_result <= 0) {
             return true;  // No data available or timeout
         }
 
         // Read VPI command structure (OpenOCD format)
-        // Optimized protocol: OpenOCD sends variable sizes:
-        //   - cJTAG mode: 525 bytes (cmd + buffer_out[512] + buffer_in[1] + length + nb_bits)
-        //   - JTAG mode:  1036 bytes (full struct)
-        // Strategy: Read at least minimum size (525 bytes), accept more for full JTAG mode
         struct vpi_cmd vpi;
         memset(&vpi, 0, sizeof(vpi));
 
-        // Read minimum optimized size (525 bytes for cJTAG)
-        // Use MSG_WAITALL to block until we get at least this much
-        const size_t min_size = 4 + 512 + 1 + 4 + 4;  // 525 bytes minimum
-        ssize_t n = recv(client_fd, &vpi, min_size, MSG_WAITALL);
+        // Read full structure (blocking read since select confirmed data is available)
+        ssize_t n = recv(client_fd, &vpi, sizeof(vpi), 0);
         if (n <= 0) {
-            printf("VPI: Client disconnected (recv returned %zd)\n", n);
-            close(client_fd);
-            client_fd = -1;
-            connected = false;
+            if (n == 0 || (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK)) {
+                printf("VPI: Client disconnected (recv returned %zd, errno=%d)\n", n, errno);
+                close(client_fd);
+                client_fd = -1;
+                connected = false;
+            }
             return true;
         }
 
-        // Check if there's more data for full JTAG mode (total 1036 bytes)
-        if (n == min_size) {
-            // Got minimum size - check if more data is available for full struct
-            size_t remaining = sizeof(vpi) - min_size;
-            ssize_t extra = recv(client_fd, (char*)&vpi + min_size, remaining, MSG_DONTWAIT);
-            if (extra > 0) {
-                n += extra;
-            }
-        }
-
         // Extract command (little-endian)
-        uint32_t cmd = vpi.cmd;  // Already in host byte order due to struct layout
+        uint32_t cmd = vpi.cmd;
 
         #ifdef VERBOSE
         static int total_commands = 0;
-        //if (total_commands < 20 || total_commands % 50 == 0) {  // First 20, then every 50th
-            printf("VPI: Received command 0x%02x (total: %d) [n=%zd bytes, first 4 bytes: %02x %02x %02x %02x]\n",
-                   cmd, total_commands, n,
-                   ((unsigned char*)&vpi)[0], ((unsigned char*)&vpi)[1],
-                   ((unsigned char*)&vpi)[2], ((unsigned char*)&vpi)[3]);
-        //}
-        total_commands++;
+        printf("VPI: Received command 0x%02x (total: %d) [n=%zd bytes]\n",
+               cmd, total_commands++, n);
         #endif
 
         // Process commands
@@ -236,16 +259,19 @@ public:
                 printf("VPI: CMD_TMS_SEQ: %d TMS bits (WARNING: Use CMD_OSCAN1_RAW for cJTAG)\n", vpi.nb_bits);
                 #endif
 
-                // Send each TMS bit via TMSC with TCKC pulsing
+                // Send each TMS bit via TMSC
+                // VPI is just a pass-through - signal changes only, no clock generation
                 for (int bit = 0; bit < vpi.nb_bits; bit++) {
                     int byte_idx = bit / 8;
                     int bit_idx = bit % 8;
                     uint8_t tms_bit = (vpi.buffer_out[byte_idx] >> bit_idx) & 0x01;
 
-                    // Set TMSC to TMS value, pulse TCKC
+                    // Set TMSC to TMS value and TCKC high
                     top->tmsc_i = tms_bit;
                     top->tckc_i = 1;
                     top->eval();
+
+                    // Then TCKC low
                     top->tckc_i = 0;
                     top->eval();
                 }
@@ -295,30 +321,25 @@ public:
                        raw_cmd_count, tckc, tmsc);
                 #endif
 
-                // Directly drive TCKC and TMSC from OpenOCD command
-                // No free-running - OpenOCD controls every edge
+                // Set TCKC and TMSC signals
                 top->tckc_i = tckc;
                 top->tmsc_i = tmsc;
 
-                // Run multiple clock cycles to allow cJTAG bridge to process
-                // 1. Edge detection (2 cycles for synchronizer)
-                // 2. State machine update (1 cycle)
-                // 3. TCK pulse (1 cycle)
-                // 4. TDO sampling (1 cycle)
-                for (int i = 0; i < 10; i++) {
-                    top->clk_i = 0;
-                    top->eval();
-                    top->clk_i = 1;
-                    top->eval();
-                }
+                // Capture initial tck_o state and set waiting flag
+                tck_initial_state = top->tck_o;
+                top->eval();
 
-                // Read TMSC output state and return in buffer_in[0]
-                vpi.buffer_in[0] = top->tmsc_o & 0x01;
+                // Set waiting flag - response will be sent when tck_o changes
+                waiting_for_tck_edge = true;
+                wait_counter = 0;  // Reset wait counter
+                pending_response = vpi;  // Save command structure for response
 
-                // Send full struct (struct layout requires length/nb_bits at end)
-                send(client_fd, &vpi, sizeof(vpi), 0);
+                #ifdef VERBOSE
+                printf("[VPI] Waiting for tck_o edge (initial state: %d)\n", tck_initial_state);
+                #endif
 
-                break;
+                // Return without sending response - will be sent when tck_o edge detected
+                return true;
             }
 
             default: {
