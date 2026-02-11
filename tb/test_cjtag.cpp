@@ -679,11 +679,11 @@ TEST_CASE(stress_test_repeated_online_offline) {
 }
 
 TEST_CASE(tckc_high_19_vs_20_cycles) {
-    // Test escape sequence timing with MIN_ESC_CYCLES boundary
-    // The send_escape_sequence helper properly holds TCKC high long enough (> MIN_ESC_CYCLES)
-    // This test verifies the escape mechanism works at the boundary
+    // Test escape sequence timing verification
+    // The send_escape_sequence helper properly holds TCKC high during toggle sequence
+    // This test verifies the escape mechanism works with various TCKC timing
 
-    // Normal escape: should work (well above MIN_ESC_CYCLES)
+    // Normal escape: should work with TCKC held high
     tb.send_escape_sequence(6);
     tb.send_oac_sequence();
 
@@ -701,19 +701,19 @@ TEST_CASE(tckc_high_19_vs_20_cycles) {
 
     ASSERT_EQ(tb.dut->online_o, 0, "Should be offline after reset escape");
 
-    // Now test with minimum timing - TCKC must be high for at least MIN_ESC_CYCLES
-    // before the escape is valid. The counter starts at 1 on posedge, increments each cycle.
-    // So: tick with tckc_i=0->1 (counter=1), then 19 more ticks (counter=20)
+    // Now test with manual timing control - TCKC held high during toggle sequence
+    // This verifies escape detection works regardless of TCKC high duration
+    // Toggle count is evaluated on TCKC falling edge
 
     tb.dut->tckc_i = 0;
     tb.dut->tmsc_i = 1;
     for (int i = 0; i < 10; i++) tb.tick();
 
-    // TCKC rises (counter initializes to 1)
+    // TCKC rises
     tb.dut->tckc_i = 1;
     tb.tick();
 
-    // Hold TCKC high for 24 more cycles (counter reaches 25, > MIN_ESC_CYCLES)
+    // Hold TCKC high for sufficient cycles to allow toggle detection
     for (int i = 0; i < 24; i++) {
         tb.tick();
     }
@@ -1024,7 +1024,8 @@ TEST_CASE(oac_wrong_sequence) {
 // =============================================================================
 
 TEST_CASE(short_tckc_pulse_rejection) {
-    // Very short TCKC pulses (< MIN_ESC_CYCLES) should not trigger escapes
+    // Very short TCKC pulses should still allow proper escape detection
+    // Escape detection is based on toggle count, not TCKC high duration
 
     for (int pulse_cycles = 1; pulse_cycles < 10; pulse_cycles++) {
         tb.dut->tckc_i = 0;
@@ -1570,7 +1571,7 @@ TEST_CASE(tckc_high_counter_saturation) {
     tb.dut->tckc_i = 0;
     for (int i = 0; i < 20; i++) tb.tick();
 
-    // Should have triggered escape (counter saturated >= MIN_ESC_CYCLES)
+    // Should have triggered escape (toggle counter evaluated on TCKC negedge)
     tb.send_oac_sequence();
     for (int i = 0; i < 50; i++) tb.tick();
 
@@ -2989,7 +2990,7 @@ TEST_CASE(walking_zeros_pattern) {
 // =============================================================================
 
 TEST_CASE(ieee1149_7_selection_sequence) {
-    // Exact spec compliance for selection (6-7 TMSC toggles, TCKC high >= MIN_ESC_CYCLES)
+    // Exact spec compliance for selection (6-7 TMSC toggles with TCKC held high)
 
     // Test 6 toggles
     tb.send_escape_sequence(6);

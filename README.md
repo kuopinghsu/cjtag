@@ -497,8 +497,7 @@ The project includes a comprehensive automated test suite in [tb/test_cjtag.cpp]
 - JTAG TAP IDCODE operations
 - Multiple packet streaming
 
-#### 2. Enhanced Testing (5 tests)
-- MIN_ESC_CYCLES boundary validation
+#### 2. Enhanced Testing (4 tests)
 - All TDI/TMS combinations
 - Full TAP state machine traversal
 - 128-bit sustained shift

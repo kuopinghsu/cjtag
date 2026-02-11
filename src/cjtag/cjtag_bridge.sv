@@ -19,10 +19,10 @@
 //    - Each TCKC phase (high/low) must be stable for >= 3 system clocks
 //    - Therefore: TCKC period >= 6 system clock cycles
 //
-// 2. Escape detection requirement: TCKC high period >= MIN_ESC_CYCLES (20)
-//    - During escape sequence, TCKC must be held high for >= 20 system clocks
-//    - This ensures intentional escape vs. spurious glitches
-//    - Each TCKC edge during escape must allow sufficient time for toggle detection
+// 2. Escape detection: TCKC held high during escape sequence
+//    - During escape sequence, TCKC is held high while TMSC toggles
+//    - Toggle count is evaluated on TCKC falling edge
+//    - No minimum hold time required
 //
 // EXAMPLE: 100MHz system clock, 10MHz TCKC max
 //    - TCKC period = 100ns, system period = 10ns
@@ -142,15 +142,7 @@ module cjtag_bridge (
     // =========================================================================
     // Monitors: TCKC held high + TMSC toggling
     // Counts TMSC edges while TCKC remains high
-    //
-    // MIN_ESC_CYCLES: Optional glitch filter - not required by IEEE 1149.7
-    // Set to 0 to disable (accepts escape on any TCKC negedge with valid toggle count)
-    // Set to >0 to require TCKC held high for minimum cycles (filters noise)
     // =========================================================================
-    // verilator lint_off UNUSEDPARAM
-    localparam MIN_ESC_CYCLES = 0;  // Minimum system clock cycles TCKC must be high (0=disabled)
-    // verilator lint_on UNUSEDPARAM
-
     always_ff @(posedge clk_i or negedge ntrst_i) begin
         if (!ntrst_i) begin
             tckc_is_high <= 1'b0;

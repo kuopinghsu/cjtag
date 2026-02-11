@@ -136,11 +136,10 @@ The cJTAG bridge uses a **system clock-based architecture** to enable proper esc
    - Set tckc_is_high flag
    - Reset tmsc_toggle_count
 
-   // While TCKC stays high (MIN_ESC_CYCLES = 20)
+   // While TCKC stays high
    - Count TMSC edges
-   - Increment tckc_high_cycles
 
-   // When TCKC goes low (if tckc_high_cycles >= MIN_ESC_CYCLES)
+   // When TCKC goes low
    - Evaluate tmsc_toggle_count:
      * 6-7:  Selection (activate → ONLINE_ACT)
      * 8+:   Reset to OFFLINE
@@ -189,7 +188,7 @@ The cJTAG bridge operates in four primary states:
                      │   OFFLINE   │◄─── Power-on / nTRST
                      └──────┬──────┘
                             │ 6-7 TMSC toggles
-                            │ (TCKC high ≥ MIN_ESC_CYCLES)
+                            │ (TCKC held high)
                             ▼
                      ┌─────────────┐
                      │ ONLINE_ACT  │
@@ -213,10 +212,10 @@ Escape sequences are detected by monitoring TCKC and TMSC:
 
 | TMSC Toggles | TCKC State | Function | State Transition |
 |--------------|------------|----------|------------------|
-| 6-7 | High ≥ MIN_ESC_CYCLES | **Selection** | OFFLINE → ONLINE_ACT |
-| 8+ | High ≥ MIN_ESC_CYCLES | **Reset** | Any → OFFLINE |
+| 6-7 | Held high | **Selection** | OFFLINE → ONLINE_ACT |
+| 8+ | Held high | **Reset** | Any → OFFLINE |
 
-**MIN_ESC_CYCLES**: 20 system clock cycles minimum. This threshold prevents false escape detection during normal TCKC toggling.
+**Note**: Escape sequences are detected when TCKC transitions from high to low. The toggle count is evaluated on the falling edge.
 
 ---
 
@@ -238,7 +237,7 @@ Escape sequences are detected by monitoring TCKC and TMSC:
     {"name": "State", "wave": "2...............3", "data": ["OFFLINE", "ONLINE_ACT"]}
   ],
   "config": {"hscale": 2},
-  "head": {"text": "Selection Escape: 6 TMSC Toggles (TCKC high ≥ MIN_ESC_CYCLES)"}
+  "head": {"text": "Selection Escape: 6 TMSC Toggles (TCKC held high)"}
 }
 ```
 
@@ -369,7 +368,7 @@ TCK pulses once every 3 TCKC cycles during OScan1 operation. TCK goes high on TC
                      │   OFFLINE   │◄─── Power-on / nTRST
                      └──────┬──────┘
                             │ 6-7 TMSC toggles
-                            │ (TCKC high ≥ MIN_ESC_CYCLES)
+                            │ (TCKC held high)
                             │ Detected on TCKC negedge
                             ▼
                      ┌─────────────┐
@@ -396,8 +395,8 @@ TCK pulses once every 3 TCKC cycles during OScan1 operation. TCK goes high on TC
 - **OSCAN1**: Active scanning, processing 3-bit packets (nTDI, TMS, TDO)
 
 **Escape Sequences:**
-- **6-7 toggles** (TCKC high ≥ MIN_ESC_CYCLES=20): Selection → ONLINE_ACT
-- **8+ toggles** (TCKC high ≥ MIN_ESC_CYCLES=20): Reset → OFFLINE
+- **6-7 toggles** (TCKC held high): Selection → ONLINE_ACT
+- **8+ toggles** (TCKC held high): Reset → OFFLINE
 - **Hardware reset** (nTRST assertion): Immediate → OFFLINE from any state
 ```
 
@@ -526,31 +525,22 @@ end
 ### Escape Sequence Detection
 
 ```systemverilog
-localparam MIN_ESC_CYCLES = 20;  // Minimum cycles TCKC must be high
-
 always_ff @(posedge clk_i or negedge ntrst_i) begin
     if (!ntrst_i) begin
         tckc_is_high <= 1'b0;
-        tckc_high_cycles <= 4'd0;
         tmsc_toggle_count <= 5'd0;
     end else begin
         // Track when TCKC goes high
         if (tckc_posedge) begin
             tckc_is_high <= 1'b1;
-            tckc_high_cycles <= 4'd1;
             tmsc_toggle_count <= 5'd0;
         end
         // Track TCKC going low
         else if (tckc_negedge) begin
             tckc_is_high <= 1'b0;
-            tckc_high_cycles <= 4'd0;
         end
         // TCKC held high - count TMSC toggles
         else if (tckc_is_high && tckc_s) begin
-            if (tckc_high_cycles < 4'd15) begin
-                tckc_high_cycles <= tckc_high_cycles + 4'd1;
-            end
-
             if (tmsc_edge) begin
                 tmsc_toggle_count <= tmsc_toggle_count + 5'd1;
             end
@@ -567,8 +557,8 @@ State transitions occur on TCKC negedge (after sampling):
 always_ff @(posedge clk_i or negedge ntrst_i) begin
     case (state)
         ST_OFFLINE: begin
-            // Detect selection escape (6-7 toggles, TCKC high long enough)
-            if (tckc_negedge && tckc_high_cycles >= MIN_ESC_CYCLES[3:0]) begin
+            // Detect selection escape (6-7 toggles)
+            if (tckc_negedge) begin
                 if (tmsc_toggle_count >= 5'd6 && tmsc_toggle_count <= 5'd7) begin
                     state <= ST_ONLINE_ACT;
                 end
@@ -592,7 +582,7 @@ always_ff @(posedge clk_i or negedge ntrst_i) begin
 
         ST_OSCAN1: begin
             // Check for reset escape (8+ toggles)
-            if (tckc_negedge && tckc_high_cycles >= MIN_ESC_CYCLES[3:0]) begin
+            if (tckc_negedge) begin
                 if (tmsc_toggle_count >= 5'd8) begin
                     state <= ST_OFFLINE;
                 end

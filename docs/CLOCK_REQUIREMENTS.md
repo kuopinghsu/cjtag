@@ -17,11 +17,11 @@ The cJTAG bridge uses the system clock to sample asynchronous TCKC and TMSC inpu
 
 ### Requirement 2: Escape Sequence Detection
 
-**TCKC high period ≥ MIN_ESC_CYCLES (20 system clocks)**
+**TCKC held high during escape sequences**
 
-- During escape sequences, TCKC must be held high for at least 20 system clock cycles
-- This distinguishes intentional escape sequences from spurious glitches
-- OpenOCD holds TCKC high across multiple commands during escape sequence transmission
+- During escape sequences, TCKC is held high while TMSC toggles
+- Toggle count (6-7 for selection, 8+ for reset) is evaluated when TCKC falls
+- OpenOCD holds TCKC high throughout the escape sequence transmission
 
 ## Current Implementation
 
@@ -102,5 +102,5 @@ If you need to change the TCKC frequency:
 ## References
 
 - IEEE 1149.7 Standard: cJTAG timing specifications
-- `MIN_ESC_CYCLES` parameter: Defined in `cjtag_bridge.sv` line 130
-- Synchronizer design: Two-stage FF synchronizer (lines 85-98)
+- Bridge RTL: `src/cjtag/cjtag_bridge.sv` - Documents clock requirements in header
+- Synchronizer design: Two-stage FF synchronizer for metastability protection

@@ -84,7 +84,7 @@ This directory contains comprehensive documentation for the cJTAG Bridge project
 | Parameter | Value | Purpose |
 |-----------|-------|---------|
 | System Clock | 100 MHz | Free-running for synchronizers |
-| MIN_ESC_CYCLES | 20 | Escape detection threshold |
+
 | Counter Width | 5 bits | Saturates at 31 |
 | TCKC:TCK Ratio | 3:1 | OScan1 packet timing |
 | IDCODE | 0x1DEAD3FF | TAP identification |

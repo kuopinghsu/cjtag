@@ -45,8 +45,7 @@ IEEE 1149.7 cJTAG bridge implementing OScan1 format conversion to standard JTAG.
 - 2-stage synchronizers for metastability protection
 
 **Specifications:**
-- MIN_ESC_CYCLES: 20 (minimum TCKC high cycles for escape detection)
-- Counter widths: 5-bit (saturate at 31)
+- Counter widths: 5-bit toggle counter (saturates at 31)
 - Supported modes: OScan1 (Scan Format 1)
 
 ### jtag/jtag_tap.sv

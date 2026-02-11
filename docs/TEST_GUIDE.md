@@ -107,7 +107,7 @@ The 131 tests are organized into 13 comprehensive categories:
 
 | # | Test Name | Purpose |
 |---|-----------|---------|
-| 19 | `tckc_high_19_vs_20_cycles` | MIN_ESC_CYCLES boundary (19 fail, 20 pass) |
+| 19 | `tckc_high_19_vs_20_cycles` | Escape sequence timing verification |
 | 20 | `all_tdi_tms_combinations` | All 4 TDI/TMS combinations |
 | 21 | `tap_state_machine_full_path` | Navigate all 16 TAP states |
 | 22 | `long_data_shift_128_bits` | Sustained 128-bit shift operation |
@@ -446,7 +446,7 @@ Test Results: 131 tests passed
 - ✅ Random data patterns
 
 ### Boundary & Edge Cases
-- ✅ MIN_ESC_CYCLES boundary (19 vs 20)
+- ✅ Escape sequence timing
 - ✅ Counter saturation (5-bit: 31 max)
 - ✅ Zero toggles
 - ✅ Odd toggle counts
@@ -478,9 +478,9 @@ Test Results: 131 tests passed
 **Finding**: Manual clock control causes intermittent failures; free-running 100MHz system clock is essential.
 **Tests**: All tests validate this design decision.
 
-### 2. MIN_ESC_CYCLES = 20 Requirement ✅
-**Finding**: 5-bit counter required (4-bit max 15 insufficient).
-**Test**: Test 17 validates 19 cycles fail, 20 cycles pass.
+### 2. Escape Sequence Detection ✅
+**Finding**: Toggle count evaluated on TCKC falling edge enables reliable escape detection.
+**Test**: Test 19 validates escape sequence timing with TCKC held high.
 
 ### 3. Complete Deselection Support ✅
 **Implementation**: 4-5 toggle deselection now fully works from OSCAN1→OFFLINE (Tests 16-17).
@@ -548,7 +548,7 @@ gtkwave *.fst
 - **Solution**: Build without VERBOSE flag: `make clean && make test`
 
 **Issue: Escape sequence not detected**
-- **Check**: TCKC held high for ≥ MIN_ESC_CYCLES (20)
+- **Check**: TCKC held high during toggle sequence
 - **Check**: TMSC toggle count matches expected (6-7 selection, 8+ reset)
 - **Check**: Edge detection timing (needs multiple system clocks)
 
@@ -854,12 +854,12 @@ echo "✅ All tests passed!"
 
 **Impact**: All tests use `tick()` method which auto-toggles clock.
 
-### 3. MIN_ESC_CYCLES = 20
-**Decision**: Minimum 20 system clock cycles for valid escape.
+### 3. Escape Sequence Timing
+**Decision**: Escape sequences evaluated on TCKC falling edge based on toggle count.
 
-**Reason**: Provides reliable edge detection with 2-cycle synchronizers and processing time.
+**Reason**: Provides reliable detection without requiring minimum hold time, simplifying the design.
 
-**Impact**: Test 17 validates this threshold precisely.
+**Impact**: Test 19 validates escape sequence timing with TCKC held high.
 
 ### 4. 5-Bit Counters
 **Decision**: Counters saturate at 31 (5-bit maximum).
