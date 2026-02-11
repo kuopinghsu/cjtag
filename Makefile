@@ -75,7 +75,7 @@ VFLAGS += -CFLAGS "$(CFLAGS_BASE)"
 # Targets
 # =============================================================================
 
-.PHONY: all clean build run sim vpi test test-openocd test-idcode help
+.PHONY: all clean build run sim vpi test test-openocd test-idcode fpga help
 
 # Default target
 
@@ -94,6 +94,7 @@ help:
 	@echo "  make sim          - Run simulation with waveform"
 	@echo "  make WAVE=1       - Run simulation with FST waveform dump"
 	@echo "  make vpi          - Run simulation and wait for OpenOCD"
+	@echo "  make fpga         - Build FPGA bitstream (Xilinx XCKU5P)"
 	@echo "  make clean        - Clean build artifacts"
 	@echo "  make help         - Show this help message"
 	@echo ""
@@ -226,6 +227,7 @@ clean:
 	@echo "Cleaning build artifacts..."
 	rm -rf $(BUILD_DIR)
 	rm -f *.fst *.fst.hier *.vcd *.log
+	@$(MAKE) -C fpga clean
 	@echo "Clean complete."
 
 # Lint RTL (optional)
@@ -419,7 +421,14 @@ test-idcode: $(IDCODE_TEST)
 		exit 1; \
 	fi
 
+# FPGA synthesis target
+fpga:
+	@echo "=========================================="
+	@echo "Building FPGA Bitstream for Xilinx XCKU5P"
+	@echo "=========================================="
+	@$(MAKE) -C fpga all
+
 # =============================================================================
 # Phony targets (non-file targets)
 # =============================================================================
-.PHONY: all build run sim vpi clean help lint wave status test-openocd test-idcode
+.PHONY: all build run sim vpi clean help lint wave status test-openocd test-idcode fpga

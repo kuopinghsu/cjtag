@@ -1,0 +1,15 @@
+# Vivado project files
+project/
+*.log
+*.jou
+.Xil/
+
+# Build outputs
+build/
+
+# Temporary files
+*~
+*.swp
+*.bak
+
+# Note: constraints.xdc is tracked (it's a source file)
