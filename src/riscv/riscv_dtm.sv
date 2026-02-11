@@ -118,22 +118,18 @@ module riscv_dtm #(
 
     // DMI state
     logic [6:0]  dmi_address;
-    /* verilator lint_off UNUSEDSIGNAL */
-    logic [31:0] dmi_data;    // Used for debugging
-    logic [1:0]  dmi_op;      // Used for debugging
-    /* verilator lint_on UNUSEDSIGNAL */
     logic [31:0] dmcontrol;
 
     // ========================================================================
-    // Capture-DR: Load shift registers
+    // Capture-DR and Shift-DR: Load and shift registers
     // ========================================================================
     always_ff @(posedge tck_i or negedge ntrst_i) begin
         if (!ntrst_i) begin
-            idcode_shift  <= IDCODE;
-            dtmcs_shift   <= DTMCS_VALUE;
+            // Initialize shift registers to zero (loaded during CAPTURE_DR)
+            idcode_shift  <= 32'b0;
+            dtmcs_shift   <= 32'b0;
             dmi_shift     <= 41'b0;
             bypass_shift  <= 1'b0;
-            dmcontrol     <= DMCONTROL_RESET;
         end else if (capture_dr_i) begin
             case (ir_i)
                 IR_IDCODE: begin
@@ -157,15 +153,6 @@ module riscv_dtm #(
                 IR_BYPASS:  bypass_shift <= 1'b0;
                 default:    bypass_shift <= 1'b0;
             endcase
-        end
-    end
-
-    // ========================================================================
-    // Shift-DR: Shift data through register
-    // ========================================================================
-    always_ff @(posedge tck_i or negedge ntrst_i) begin
-        if (!ntrst_i) begin
-            // Reset handled in capture_dr block
         end else if (shift_dr_i) begin
             case (ir_i)
                 IR_IDCODE: begin
@@ -189,13 +176,10 @@ module riscv_dtm #(
     always_ff @(posedge tck_i or negedge ntrst_i) begin
         if (!ntrst_i) begin
             dmi_address <= 7'b0;
-            dmi_data    <= 32'b0;
-            dmi_op      <= 2'b0;
+            dmcontrol   <= DMCONTROL_RESET;
         end else if (update_dr_i && ir_i == IR_DMI) begin
-            // Extract fields from shifted data
+            // Extract address field from shifted data
             dmi_address <= dmi_shift[40:34];
-            dmi_data    <= dmi_shift[33:2];
-            dmi_op      <= dmi_shift[1:0];
 
             // Process write operations
             if (dmi_shift[1:0] == 2'b10) begin  // Write operation

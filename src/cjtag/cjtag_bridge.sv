@@ -83,7 +83,6 @@ module cjtag_bridge (
     // =========================================================================
     logic [4:0]  tmsc_toggle_count;     // TMSC toggle counter for escape sequences
     logic        tckc_is_high;          // TCKC currently held high
-    logic [4:0]  tckc_high_cycles;      // Counter for TCKC high duration
 
     logic [10:0] activation_shift;      // Activation packet shift register (11 bits, 12th bit in tmsc_s)
     logic [3:0]  activation_count;      // Bit counter for activation packet (0-11)
@@ -155,7 +154,6 @@ module cjtag_bridge (
     always_ff @(posedge clk_i or negedge ntrst_i) begin
         if (!ntrst_i) begin
             tckc_is_high <= 1'b0;
-            tckc_high_cycles <= 5'd0;
             tmsc_toggle_count <= 5'd0;
         end else begin
             // Escape detection: Monitor TMSC toggles while TCKC is high
@@ -163,7 +161,6 @@ module cjtag_bridge (
             // Track when TCKC goes high
             if (tckc_posedge) begin
                 tckc_is_high <= 1'b1;
-                tckc_high_cycles <= 5'd1;
                 tmsc_toggle_count <= 5'd0;  // Reset counter on TCKC rising edge
 
                 `ifdef VERBOSE
@@ -173,28 +170,20 @@ module cjtag_bridge (
             // Track TCKC going low (escape sequence ends)
             else if (tckc_negedge) begin
                 tckc_is_high <= 1'b0;
-                tckc_high_cycles <= 5'd0;
 
                 `ifdef VERBOSE
                 $display("[%0t] TCKC NEGEDGE detected! Toggle count was %0d", $time, tmsc_toggle_count);
                 `endif
             end
-            // TCKC is held high - monitor TMSC and count cycles
-            else if (tckc_is_high && tckc_s) begin
-                // Increment high duration counter (with saturation at 31)
-                if (tckc_high_cycles < 5'd31) begin
-                    tckc_high_cycles <= tckc_high_cycles + 5'd1;
-                end
-
+            // TCKC is held high - monitor TMSC toggles
+            else if (tckc_is_high && tckc_s && tmsc_edge) begin
                 // Count TMSC toggles while TCKC is high
-                if (tmsc_edge) begin
-                    tmsc_toggle_count <= tmsc_toggle_count + 5'd1;
+                tmsc_toggle_count <= tmsc_toggle_count + 5'd1;
 
-                    `ifdef VERBOSE
-                    $display("[%0t] Escape: TMSC toggle #%0d detected (TCKC high for %0d cycles)",
-                             $time, tmsc_toggle_count + 5'd1, tckc_high_cycles);
-                    `endif
-                end
+                `ifdef VERBOSE
+                $display("[%0t] Escape: TMSC toggle #%0d detected",
+                         $time, tmsc_toggle_count + 5'd1);
+                `endif
             end
         end
     end
@@ -218,8 +207,8 @@ module cjtag_bridge (
                     // Check for escape sequence completion on TCKC falling edge
                     if (tckc_negedge) begin
                         `ifdef VERBOSE
-                        $display("[%0t] OFFLINE (state=%0d): Escape sequence ended, toggles=%0d, cycles=%0d",
-                                 $time, state, tmsc_toggle_count, tckc_high_cycles);
+                        $display("[%0t] OFFLINE (state=%0d): Escape sequence ended, toggles=%0d",
+                                 $time, state, tmsc_toggle_count);
                         `endif
 
                         // Evaluate escape sequence based on toggle count
@@ -243,12 +232,6 @@ module cjtag_bridge (
                         // 4-5 toggles (deselection) stays in OFFLINE
                     end
 
-                    `ifdef VERBOSE
-                    else if (tckc_negedge) begin
-                        $display("[%0t] OFFLINE: TCKC negedge but not enough cycles (%0d < %0d) or toggles=%0d",
-                                 $time, tckc_high_cycles, MIN_ESC_CYCLES, tmsc_toggle_count);
-                    end
-                    `endif
                 end
 
                 // =============================================================
@@ -288,36 +271,29 @@ module cjtag_bridge (
                         // Format: OAC (4 bits) + EC (4 bits) + CP (4 bits) - all LSB first
                         // Expected: OAC=1100, EC=1000, CP=calculated parity
                         if (activation_count == 4'd11) begin
-                            // Combine current bit with previous 11 bits: {tmsc_s, activation_shift[10:0]}
-                            logic [11:0] received_packet;
-                            logic [3:0] received_oac, received_ec, received_cp;
-                            logic [3:0] calculated_cp;
-                            logic cp_valid;
-
-                            received_packet = {tmsc_s, activation_shift[10:0]};
-
-                            // Extract fields (bits received LSB first)
-                            received_oac = received_packet[3:0];   // OAC: bits 0-3
-                            received_ec  = received_packet[7:4];   // EC: bits 4-7
-                            received_cp  = received_packet[11:8];  // CP: bits 8-11
-
-                            // Calculate CP: XOR of each bit position across OAC and EC
-                            // CP[0] = OAC[0] XOR EC[0], CP[1] = OAC[1] XOR EC[1], etc.
-                            calculated_cp = received_oac ^ received_ec;
-
-                            // Validate CP (always enabled for IEEE 1149.7 compliance)
-                            cp_valid = (received_cp == calculated_cp);
+                            // Combine current bit with previous 11 bits and validate inline
+                            // Packet: {tmsc_s, activation_shift[10:0]}
+                            // OAC: bits [3:0], EC: bits [7:4], CP: bits [11:8]
 
                             `ifdef VERBOSE
                             $display("[%0t] Checking activation packet:", $time);
-                            $display("    Full packet: %b", received_packet);
+                            $display("    Full packet: %b", {tmsc_s, activation_shift[10:0]});
                             $display("    OAC=%b (expected=1100), EC=%b (expected=1000), CP=%b",
-                                     received_oac, received_ec, received_cp);
-                            $display("    Calculated CP=%b, CP valid=%b", calculated_cp, cp_valid);
+                                     {tmsc_s, activation_shift[10:0]}[3:0],
+                                     {tmsc_s, activation_shift[10:0]}[7:4],
+                                     {tmsc_s, activation_shift[10:0]}[11:8]);
+                            $display("    Calculated CP=%b, CP valid=%b",
+                                     {tmsc_s, activation_shift[10:0]}[3:0] ^ {tmsc_s, activation_shift[10:0]}[7:4],
+                                     {tmsc_s, activation_shift[10:0]}[11:8] == ({tmsc_s, activation_shift[10:0]}[3:0] ^ {tmsc_s, activation_shift[10:0]}[7:4]));
                             `endif
 
                             // Validate: OAC=1100, EC=1000, CP matches calculated value
-                            if (received_oac == 4'b1100 && received_ec == 4'b1000 && cp_valid) begin
+                            // OAC check: bits [3:0] == 4'b1100
+                            // EC check: bits [7:4] == 4'b1000
+                            // CP check: bits [11:8] == (bits[3:0] XOR bits[7:4])
+                            if ({tmsc_s, activation_shift[10:0]}[3:0] == 4'b1100 &&
+                                {tmsc_s, activation_shift[10:0]}[7:4] == 4'b1000 &&
+                                {tmsc_s, activation_shift[10:0]}[11:8] == ({tmsc_s, activation_shift[10:0]}[3:0] ^ {tmsc_s, activation_shift[10:0]}[7:4])) begin
                                 state <= ST_OSCAN1;
                                 bit_pos <= 2'd0;
 
@@ -328,13 +304,15 @@ module cjtag_bridge (
                                 state <= ST_OFFLINE;
 
                                 `ifdef VERBOSE
-                                if (!cp_valid) begin
+                                if ({tmsc_s, activation_shift[10:0]}[11:8] != ({tmsc_s, activation_shift[10:0]}[3:0] ^ {tmsc_s, activation_shift[10:0]}[7:4])) begin
                                     $display("[%0t] ONLINE_ACT -> OFFLINE (CP parity error: rx=%b calc=%b)",
-                                             $time, received_cp, calculated_cp);
-                                end else if (received_oac != 4'b1100) begin
-                                    $display("[%0t] ONLINE_ACT -> OFFLINE (invalid OAC: %b)", $time, received_oac);
+                                             $time,
+                                             {tmsc_s, activation_shift[10:0]}[11:8],
+                                             {tmsc_s, activation_shift[10:0]}[3:0] ^ {tmsc_s, activation_shift[10:0]}[7:4]);
+                                end else if ({tmsc_s, activation_shift[10:0]}[3:0] != 4'b1100) begin
+                                    $display("[%0t] ONLINE_ACT -> OFFLINE (invalid OAC: %b)", $time, {tmsc_s, activation_shift[10:0]}[3:0]);
                                 end else begin
-                                    $display("[%0t] ONLINE_ACT -> OFFLINE (invalid EC: %b)", $time, received_ec);
+                                    $display("[%0t] ONLINE_ACT -> OFFLINE (invalid EC: %b)", $time, {tmsc_s, activation_shift[10:0]}[7:4]);
                                 end
                                 `endif
                             end
