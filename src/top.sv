@@ -56,6 +56,7 @@ module top (
     // ==========================================================================
     // Waveform Dumping
     // ==========================================================================
+    `ifndef SYNTHESIS
     initial begin
         if ($test$plusargs("trace")) begin
             $display("Enabling FST waveform dump...");
@@ -74,6 +75,7 @@ module top (
                      $time, tckc_i, tmsc_i, tmsc_o, tck_o, tms_o, tdi_o, tdo_o);
         end
     end
-    `endif
+    `endif // VERBOSE
+    `endif // SYNTHESIS
 
 endmodule

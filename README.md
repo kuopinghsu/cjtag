@@ -80,18 +80,21 @@ This project implements a **cJTAG adapter** that converts a 2-wire cJTAG interfa
 
 ```
 cjtag/
+├── .github/               # GitHub configuration
+│   └── copilot-instructions.md  # GitHub Copilot instructions
 ├── src/                   # RTL source files
-│   ├── top.sv             # Top-level module
+│   ├── top.sv             # Top-level module (simulation)
+│   ├── top_fpga.sv        # Top-level module (FPGA synthesis)
 │   ├── README.md          # RTL documentation
 │   ├── cjtag/
 │   │   └── cjtag_bridge.sv    # cJTAG to JTAG converter
 │   ├── jtag/
-│   │   └── jtag_tap.sv        # Simple JTAG TAP controller
+│   │   └── jtag_tap.sv        # JTAG TAP controller (IEEE 1149.1)
 │   └── riscv/
 │       └── riscv_dtm.sv       # RISC-V Debug Transport Module
 ├── tb/                    # Testbench files
 │   ├── tb_cjtag.cpp       # C++ testbench harness
-│   ├── test_cjtag.cpp     # Automated test suite (121 tests)
+│   ├── test_cjtag.cpp     # Automated test suite (131 tests)
 │   ├── test_idcode.cpp    # IDCODE test program
 │   └── README.md          # Testbench documentation
 ├── vpi/                   # VPI interface for OpenOCD
@@ -102,7 +105,13 @@ cjtag/
 │   ├── ARCHITECTURE.md    # System architecture and design
 │   ├── PROTOCOL.md        # cJTAG protocol specification
 │   ├── TEST_GUIDE.md      # Comprehensive test documentation
-│   └── CLOCK_REQUIREMENTS.md  # Timing and clock constraints
+│   ├── CLOCK_REQUIREMENTS.md  # Timing and clock constraints
+│   └── PERFORMANCE.md     # Performance characteristics
+├── fpga/                  # FPGA synthesis files
+│   ├── Makefile           # FPGA build system
+│   ├── build_xcku5p.tcl   # Vivado synthesis script (Xilinx XCKU5P)
+│   ├── constraints.xdc    # Timing and pin constraints
+│   └── README.md          # FPGA build documentation
 ├── openocd/               # OpenOCD integration
 │   ├── cjtag.cfg          # OpenOCD configuration with test suite
 │   └── patched/           # OpenOCD patches for cJTAG support
@@ -178,7 +187,7 @@ This runs the comprehensive test suite covering:
 
 Expected output: **131/131 tests passed ✅**
 
-### 6. Run OpenOCD Integration Tests
+### 3. Run OpenOCD Integration Tests
 
 ```bash
 make test-openocd
@@ -194,7 +203,7 @@ This runs OpenOCD integration tests through the VPI interface, validating:
 
 Expected output: **8/8 OpenOCD tests passed ✅**
 
-### 7. View Waveforms
+### 4. View Waveforms
 
 ```bash
 make wave
@@ -207,14 +216,6 @@ make WAVE=1
 ```
 
 This runs the simulation with FST waveform tracing enabled. Waveform file will be saved to `cjtag.fst`.
-
-### 4. View Waveforms
-
-```bash
-make wave
-```
-
-Opens the waveform in GTKWave (if installed).
 
 ### 5. Run VPI Server for OpenOCD
 
