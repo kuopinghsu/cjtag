@@ -23,6 +23,59 @@ This project implements a **cJTAG adapter** that converts a 2-wire cJTAG interfa
 - ✅ Makefile for easy build and simulation
 - ✅ Support for RISC-V debug module interface
 
+## Implementation Scope
+
+### JTAG TAP Controller (`jtag_tap.sv`)
+
+**✅ Fully Implemented:**
+- Complete IEEE 1149.1 TAP state machine (all 16 states)
+- Instruction Register (5-bit parameterizable)
+- Data Registers: IDCODE, BYPASS, DTMCS (32-bit), DMI (41-bit)
+- Proper capture/shift/update operations
+- TDO timing per IEEE 1149.1 specification
+- Reset behavior (nTRST and software reset)
+- Integration with RISC-V Debug Transport Module
+
+**❌ Not Implemented (by design):**
+- Advanced boundary scan features (EXTEST, INTEST, SAMPLE/PRELOAD)
+- CLAMP and HIGHZ instructions
+- Boundary scan cells
+- BSDL description
+- Manufacturing test features
+
+**Use Case:** Designed for cJTAG bridge testing and basic RISC-V debug interface support. NOT intended for production boundary scan testing.
+
+### RISC-V Debug Transport Module (`riscv_dtm.sv`)
+
+**✅ Implemented:**
+- DTMCS register (Debug Transport Module Control/Status)
+  - Version field (Debug Spec 0.13)
+  - Address width configuration (abits=6)
+  - Status reporting (dmistat, idle)
+- DMI register (Debug Module Interface, 41-bit)
+  - Read/write operations
+  - Address and data fields
+- Debug Module registers (simulated):
+  - `dmcontrol` (0x10) - writable
+  - `dmstatus` (0x11) - returns fixed status values
+  - `hartinfo` (0x16) - returns hart configuration
+- OpenOCD initialization and recognition
+
+**❌ Not Implemented (minimal implementation):**
+- Full Debug Module backend (no actual hart control)
+- Halt/resume functionality
+- Single-step execution
+- Abstract commands (command register)
+- Program buffer (progbuf[0-15])
+- System bus access (sbcs, sbaddress, sbdata)
+- Memory access registers (data[0-11])
+- Authentication mechanisms
+- Error handling (dmihardreset/dmireset non-functional)
+
+**Use Case:** Sufficient for OpenOCD protocol testing, cJTAG validation, and demonstrating RISC-V DTM interface structure. NOT sufficient for actual debugging sessions (halt/resume, memory access, program execution control).
+
+**Testing:** Both modules are comprehensively validated with 131 automated tests covering all state transitions, register operations, and protocol compliance.
+
 ## Directory Structure
 
 ```
