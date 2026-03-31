@@ -173,49 +173,79 @@ Using TCKC as the clock source made escape sequence detection impossible because
 
 ### States
 
-The cJTAG bridge operates in four primary states:
+The cJTAG bridge operates in four states with dedicated escape sequence handling:
 
 | State | Description | Entry Condition | Exit Condition |
 |-------|-------------|-----------------|----------------|
-| **OFFLINE** | Reset/idle state, cJTAG inactive | Power-on, nTRST, reset escape | 6-7 toggle escape |
-| **ONLINE_ACT** | Receiving activation code | 6-7 toggle escape from OFFLINE | Valid OAC → OSCAN1<br>Invalid OAC → OFFLINE |
-| **OSCAN1** | Active scanning mode | Valid OAC (12 bits) | 8+ toggle escape, nTRST |
+| **OFFLINE** | Reset/idle state, cJTAG inactive | Power-on, nTRST, reset escape | ESCAPE with 6-7 toggles |
+| **ESCAPE** | Evaluating escape sequence | TCKC negedge with ≥4 toggles | Transition based on toggle count |
+| **ONLINE_ACT** | Receiving activation code | ESCAPE with valid selection | Valid OAC → OSCAN1<br>Invalid OAC → OFFLINE |
+| **OSCAN1** | Active scanning mode | Valid OAC (12 bits) | ESCAPE with ≥4 toggles, nTRST |
+
+### Escape Sequence Processing
+
+The ESCAPE state provides centralized escape sequence evaluation:
+
+**Detection**: When TCKC falls with `tmsc_toggle_count ≥ 4`, the state machine transitions to ESCAPE and saves the originating state in `return_state`.
+
+**Evaluation in ESCAPE**:
+- **8+ toggles**: Reset → OFFLINE (from any state)
+- **6-7 toggles**: Selection → ONLINE_ACT (from OFFLINE only)
+- **4-5 toggles**: Deselection → OFFLINE (from OSCAN1 only)
+- **Invalid sequences**: → OFFLINE (forced error recovery)
+
+**Design Benefits**:
+- ✅ Centralized escape handling logic - single evaluation point
+- ✅ Clear separation of concerns - normal operation vs escape detection
+- ✅ Improved maintainability - changes only affect ESCAPE state
+- ✅ Better debugging - escape sequences visible in waveforms as distinct state
 
 ### State Transition Diagram
 
 ```
                      ┌─────────────┐
-                     │   OFFLINE   │◄─── Power-on / nTRST
-                     └──────┬──────┘
-                            │ 6-7 TMSC toggles
-                            │ (TCKC held high)
-                            ▼
-                     ┌─────────────┐
-                     │ ONLINE_ACT  │
-                     └──────┬──────┘
-                            │ 12 bits OAC
-                            │ Valid: 0000_1000_1100
-                            ▼
-                     ┌─────────────┐
-           ┌────────►│   OSCAN1    │
-           │         └──────┬──────┘
-           │                │ 8+ toggles OR nTRST
-           │                ▼
-           │         ┌─────────────┐
-           └─────────┤   OFFLINE   │
-      3-bit packets  └─────────────┘
+                ┌───►│   OFFLINE   │◄─── Power-on / nTRST
+                │    └──────┬──────┘
+                │           │ TCKC negedge
+                │           │ toggle_count ≥ 4
+                │           ▼
+                │    ┌─────────────┐
+                │    │   ESCAPE    │ Evaluate toggle count
+                │    └──────┬──────┘ & return_state
+                │           │
+                │           ├─ 6-7 toggles (from OFFLINE)
+                │           │  → Selection
+                │           ▼
+                │    ┌─────────────┐
+                │    │ ONLINE_ACT  │ Receive 12-bit OAC
+                │    └──────┬──────┘
+                │           │ Valid OAC
+                │           ▼
+                │    ┌─────────────┐
+                │    │   OSCAN1    │ Active scanning
+                │    └──────┬──────┘
+                │           │ TCKC negedge
+                └───────────┘ toggle_count ≥ 4
+                     (via ESCAPE)
 ```
 
 ### Escape Sequences
 
-Escape sequences are detected by monitoring TCKC and TMSC:
+Escape sequences are detected by monitoring TCKC and TMSC transitions:
 
-| TMSC Toggles | TCKC State | Function | State Transition |
-|--------------|------------|----------|------------------|
-| 6-7 | Held high | **Selection** | OFFLINE → ONLINE_ACT |
-| 8+ | Held high | **Reset** | Any → OFFLINE |
+| TMSC Toggles | From State | Function | Final State |
+|--------------|------------|----------|-------------|
+| 6-7 | OFFLINE | **Selection** | ONLINE_ACT |
+| 4-5 | OSCAN1 | **Deselection** | OFFLINE |
+| 8+ | Any | **Reset** | OFFLINE |
 
-**Note**: Escape sequences are detected when TCKC transitions from high to low. The toggle count is evaluated on the falling edge.
+**Detection Mechanism**:
+1. When TCKC rises: Reset `tmsc_toggle_count` to 0
+2. While TCKC stays high: Count TMSC edges
+3. When TCKC falls: If `tmsc_toggle_count ≥ 4`, transition to ESCAPE
+4. ESCAPE state: Evaluate toggle count and determine next state based on `return_state`
+
+**Note**: All escape sequences are processed through the ESCAPE state, providing a single point for escape sequence validation and state transition logic.
 
 ---
 
@@ -365,38 +395,45 @@ TCK pulses once every 3 TCKC cycles during OScan1 operation. TCK goes high on TC
 
 ```
                      ┌─────────────┐
-                     │   OFFLINE   │◄─── Power-on / nTRST
-                     └──────┬──────┘
-                            │ 6-7 TMSC toggles
-                            │ (TCKC held high)
-                            │ Detected on TCKC negedge
-                            ▼
-                     ┌─────────────┐
-                     │ ONLINE_ACT  │
-                     └──────┬──────┘
-                            │ 12 bits OAC on TCKC negedge
-                            │ Valid: 0000_1000_1100
-                            │ Invalid → OFFLINE
-                            ▼
-                     ┌─────────────┐
-           ┌────────►│   OSCAN1    │◄───────┐
-           │         └──────┬──────┘        │
-           │                │               │
-           │                │ 8+ toggles    │ 3-bit
-           │                │ OR nTRST      │ packets
-           │                ▼               │
-           │         ┌─────────────┐        │
-           └─────────┤   OFFLINE   │────────┘
-                     └─────────────┘
+                ┌───►│   OFFLINE   │◄─── Power-on / nTRST
+                │    └──────┬──────┘
+                │           │ TCKC negedge, toggle_count≥4
+                │           ▼
+                │    ┌─────────────┐
+                │    │   ESCAPE    │ Evaluate toggle_count
+                │    └──────┬──────┘
+                │           │ 6-7 toggles (from OFFLINE)
+                │           ▼
+                │    ┌─────────────┐
+                │    │ ONLINE_ACT  │ Receive OAC+EC+CP
+                │    └──────┬──────┘
+                │           │ Valid: 0000_1000_1100
+                │           │ Invalid → OFFLINE (via ESCAPE)
+                │           ▼
+                │    ┌─────────────┐
+           ┌────┤    │   OSCAN1    │◄───────┐
+           │    │    └──────┬──────┘        │
+           │    │           │               │
+           │    │           │ TCKC negedge  │ 3-bit
+           │    │           │ toggle_count≥4│ packets
+           │    │           ▼               │
+           │    │    ┌─────────────┐        │
+           │    └───►│   ESCAPE    │────────┘
+           │         └──────┬──────┘
+           │                │ 4-5/8+ toggles
+           └────────────────┘
+```
 
 **State Details:**
 - **OFFLINE**: Default state, cJTAG inactive, JTAG signals idle
+- **ESCAPE**: Evaluates escape sequences based on toggle count and source state
 - **ONLINE_ACT**: Receiving 12-bit activation code (OAC+EC+CP)
 - **OSCAN1**: Active scanning, processing 3-bit packets (nTDI, TMS, TDO)
 
 **Escape Sequences:**
-- **6-7 toggles** (TCKC held high): Selection → ONLINE_ACT
-- **8+ toggles** (TCKC held high): Reset → OFFLINE
+- **6-7 toggles** (TCKC held high, from OFFLINE): Selection → ONLINE_ACT
+- **4-5 toggles** (TCKC held high, from OSCAN1): Deselection → OFFLINE
+- **8+ toggles** (TCKC held high, any state): Reset → OFFLINE
 - **Hardware reset** (nTRST assertion): Immediate → OFFLINE from any state
 ```
 
@@ -712,13 +749,13 @@ CP[3] = OAC[3] ⊕ EC[3] = 1 ⊕ 1 = 0
 
 The project includes three comprehensive test suites:
 
-1. **Verilator Unit/Integration Tests**: 123 tests in `tb/test_cjtag.cpp`
+1. **Verilator Unit/Integration Tests**: 131 tests in `tb/test_cjtag.cpp`
 2. **OpenOCD Integration Tests**: 8 tests via VPI interface
 3. **VPI IDCODE Test**: Direct IDCODE verification
 
-**Combined Status**: 132 total tests, 100% passing ✅
+**Combined Status**: 140 total tests, 100% passing ✅
 
-### Verilator Test Suite (123 Tests)
+### Verilator Test Suite (131 Tests)
 
 Sample tests from `tb/test_cjtag.cpp`:
 

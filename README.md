@@ -8,14 +8,15 @@ This project implements a **cJTAG adapter** that converts a 2-wire cJTAG interfa
 
 - **OScan1 format** for advanced protocol
 - **TAP.7 star-2 scan topology**
-- **Online/Offline state management**
-- **Escape sequences** for mode switching
+- **Four-state architecture** (OFFLINE, ESCAPE, ONLINE_ACT, OSCAN1)
+- **Escape sequences** for mode switching with dedicated ESCAPE state
 - **Online Activation Code (OAC)** validation with CP parity checking
 
 ## Features
 
 - ✅ Full cJTAG to JTAG bridge (OScan1 format)
 - ✅ 12-bit Activation Packet with CP (Check Packet) parity validation (IEEE 1149.7 compliant)
+- ✅ Dedicated ESCAPE state for clean escape sequence handling
 - ✅ Simple JTAG TAP controller for testing
 - ✅ OpenOCD VPI interface for remote debugging
 - ✅ Verilator-based simulation with FST waveform support

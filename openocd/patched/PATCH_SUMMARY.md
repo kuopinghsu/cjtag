@@ -104,7 +104,7 @@ case CMD_OSCAN1_RAW: {
 ## Testing
 
 ### Test Suite Status
-✅ All 101 tests pass with the updated implementation
+✅ All 131 tests pass with the updated implementation
 
 ### Test with OpenOCD
 ```bash

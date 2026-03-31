@@ -84,20 +84,26 @@ This ratio reduces effective bandwidth compared to standard JTAG but enables the
 
 ### Operating States
 
-The cJTAG adapter operates in three primary states:
+The cJTAG adapter operates in four states:
 
 1. **OFFLINE** (Reset state)
    - Default state after reset or nTRST assertion
    - TCKC and TMSC activity has no effect on internal JTAG
    - Provides electrical isolation
 
-2. **ONLINE** (Active state)
-   - Adapter actively translates 2-wire protocol to 4-wire JTAG
-   - Oscan1 protocol in effect
-   - Normal debug operations
+2. **ESCAPE** (Escape evaluation state)
+   - Entered when escape sequence detected (TCKC negedge with ≥4 TMSC toggles)
+   - Evaluates toggle count and source state
+   - Determines appropriate target state
 
-3. **TRANSITIONAL** (Handshake states)
-   - States during activation/deactivation sequences
+3. **ONLINE_ACT** (Activation state)
+   - Receiving 12-bit activation packet
+   - Validates OAC, EC, and CP fields
+
+4. **OSCAN1** (Active state)
+   - Adapter actively translates 2-wire protocol to 4-wire JTAG
+   - Processes 3-bit scan packets
+   - Normal debug operations
    - Processing escape sequences
 
 ### State Transitions
@@ -106,10 +112,10 @@ The cJTAG adapter operates in three primary states:
      nTRST
     ┌──────┐
     ↓      │
-OFFLINE ←──→ TRANSITIONAL ←──→ ONLINE
-    ↑                            │
-    └────────────────────────────┘
-         Escape Sequence
+OFFLINE ←──→ ESCAPE ←──→ ONLINE_ACT ←──→ OSCAN1
+    ↑        │                            │
+    └────────┴────────────────────────────┘
+         Escape Sequences (4-5, 6-7, 8+ toggles)
 ```
 
 ---
@@ -219,7 +225,7 @@ This implementation **fully supports** all IEEE 1149.7 escape sequences:
 - **6-7 toggles**: Selection (OFFLINE → ONLINE_ACT)
 - **8+ toggles**: Reset (any state → OFFLINE)
 
-All escape sequences work reliably in all states and are validated by the comprehensive test suite (123 Verilator tests).
+All escape sequences work reliably in all states and are validated by the comprehensive test suite (131 Verilator tests).
 
 ### Physical Layer Considerations
 

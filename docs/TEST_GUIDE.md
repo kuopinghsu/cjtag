@@ -14,7 +14,7 @@ The cJTAG Bridge project includes a comprehensive automated test suite with **13
 
 ### Run All Tests
 
-To run the complete test suite (all 123 automated tests + VPI IDCODE test + OpenOCD integration test):
+To run the complete test suite (all 131 automated tests + VPI IDCODE test + OpenOCD integration test):
 
 ```bash
 make all
@@ -69,8 +69,8 @@ The 131 tests are organized into 13 comprehensive categories:
 3. **Error Recovery & Malformed Input** (4 tests) - OAC errors, incomplete escapes
 4. **Glitch Rejection & Noise** (4 tests) - Short pulses, glitches, slow clocks
 5. **Timing Edge Cases** (4 tests) - Pulse width, setup/hold, resets
-6. **Reset & Recovery** (6 tests) - nTRST handling, timeouts, state recovery
-7. **TAP Operations** (2 tests) - BYPASS, IDCODE operations
+6. **Reset & Recovery** (5 tests) - nTRST handling, timeouts, state recovery
+7. **TAP Operations** (3 tests) - BYPASS, IDCODE operations
 8. **Systematic Boundary Testing** (25 tests) - Counter saturation, toggle counts, all states
 9. **Synchronizer & Edge Detection** (3 tests) - 2-stage sync, edge detection
 10. **Signal Integrity & Output Verification** (4 tests) - Output signal validation
@@ -140,7 +140,7 @@ The 131 tests are organized into 13 comprehensive categories:
 | 34 | `ntrst_during_oac_reception` | Reset during OAC |
 | 35 | `ntrst_during_escape_sequence` | Reset during escape |
 
-### 6. Reset & Recovery (Tests 36-41)
+### 6. Reset & Recovery (Tests 36-40)
 
 | # | Test Name | Purpose |
 |---|-----------|---------|
@@ -149,12 +149,12 @@ The 131 tests are organized into 13 comprehensive categories:
 | 38 | `online_act_timeout` | OAC timeout handling |
 | 39 | `repeated_oac_attempts` | Multiple OAC transmissions |
 | 40 | `partial_oscan1_packet` | Incomplete packet handling |
-| 41 | `tap_instruction_scan_full` | Full IR scan sequence |
 
-### 7. TAP Operations (Tests 42-43)
+### 7. TAP Operations (Tests 41-43)
 
 | # | Test Name | Purpose |
 |---|-----------|---------|
+| 41 | `tap_instruction_scan_full` | Full IR scan sequence |
 | 42 | `bypass_register` | BYPASS instruction test |
 | 43 | `idcode_multiple_reads` | Multiple IDCODE reads |
 
@@ -236,32 +236,40 @@ The 131 tests are organized into 13 comprehensive categories:
 | 100 | `walking_zeros_pattern` | Walking 0s pattern |
 | 101 | `ieee1149_7_selection_sequence` | Proper activation sequence |
 | 102 | `oac_ec_cp_field_values` | OAC field validation |
-| 103 | `oscan1_format_compliance` | 3-bit packet format adherence |
+| 103 | `cp_validation_all_bits_correct` | CP parity all bits correct |
+| 104 | `cp_validation_single_bit_errors` | CP single-bit error detection |
+| 105 | `cp_validation_multiple_bit_errors` | CP multiple-bit error detection |
+| 106 | `cp_validation_with_wrong_ec` | CP validation with wrong EC field |
+| 107 | `cp_validation_all_zeros` | CP validation all zeros pattern |
+| 108 | `cp_validation_all_ones` | CP validation all ones pattern |
+| 109 | `cp_xor_calculation_verification` | CP XOR parity calculation |
+| 110 | `cp_validation_stress_test` | CP parity stress test |
+| 111 | `oscan1_format_compliance` | 3-bit packet format adherence |
 
-### 12. RISC-V Debug Module (Tests 104-123)
+### 13. RISC-V Debug Module (Tests 112-131)
 
 | # | Test Name | Purpose |
 |---|-----------|---------|
-| 104 | `dtmcs_register_read` | RISC-V DTMCS register access |
-| 105 | `dtmcs_register_format` | DTMCS register field validation |
-| 106 | `dmi_register_access` | RISC-V DMI register operations |
-| 107 | `debug_module_ir_scan` | IR scan with instruction readback |
-| 108 | `dmi_write_dmcontrol` | DMI write to dmcontrol register |
-| 109 | `dmi_read_after_write` | Write-then-read sequence validation |
-| 110 | `dmi_hartinfo_register` | Read hartinfo register (0x16) |
-| 111 | `dmi_invalid_address` | Invalid DMI address handling |
-| 112 | `dtmcs_dmistat_field` | DTMCS dmistat error reporting |
-| 113 | `sequential_dmi_reads` | Multiple DMI reads without IR change |
-| 114 | `rapid_dtmcs_dmi_switching` | Rapid instruction switching |
-| 115 | `dmi_41bit_boundary_test` | 41-bit DMI register full width test |
-| 116 | `complete_riscv_debug_init` | Full IDCODE→DTMCS→DMI→dmstatus flow |
-| 117 | `dmcontrol_reset_bit` | dmcontrol.dmactive field test |
-| 118 | `dmstatus_halt_flags` | anyhalted/allhalted flag validation |
-| 119 | `dmstatus_reset_flags` | anyhavereset/allhavereset validation |
-| 120 | `dmi_back_to_back_operations` | Operations without RUN_TEST_IDLE |
-| 121 | `mixed_idcode_dtmcs_dmi_sequence` | Interleaved register access |
-| 122 | `debug_module_all_registers` | Read all debug registers |
-| 123 | `dmi_stress_test_100_operations` | 100 DMI operations stress test |
+| 112 | `dtmcs_register_read` | RISC-V DTMCS register access |
+| 113 | `dtmcs_register_format` | DTMCS register field validation |
+| 114 | `dmi_register_access` | RISC-V DMI register operations |
+| 115 | `debug_module_ir_scan` | IR scan with instruction readback |
+| 116 | `dmi_write_dmcontrol` | DMI write to dmcontrol register |
+| 117 | `dmi_read_after_write` | Write-then-read sequence validation |
+| 118 | `dmi_hartinfo_register` | Read hartinfo register (0x16) |
+| 119 | `dmi_invalid_address` | Invalid DMI address handling |
+| 120 | `dtmcs_dmistat_field` | DTMCS dmistat error reporting |
+| 121 | `sequential_dmi_reads` | Multiple DMI reads without IR change |
+| 122 | `rapid_dtmcs_dmi_switching` | Rapid instruction switching |
+| 123 | `dmi_41bit_boundary_test` | 41-bit DMI register full width test |
+| 124 | `complete_riscv_debug_init` | Full IDCODE→DTMCS→DMI→dmstatus flow |
+| 125 | `dmcontrol_reset_bit` | dmcontrol.dmactive field test |
+| 126 | `dmstatus_halt_flags` | anyhalted/allhalted flag validation |
+| 127 | `dmstatus_reset_flags` | anyhavereset/allhavereset validation |
+| 128 | `dmi_back_to_back_operations` | Operations without RUN_TEST_IDLE |
+| 129 | `mixed_idcode_dtmcs_dmi_sequence` | Interleaved register access |
+| 130 | `debug_module_all_registers` | Read all debug registers |
+| 131 | `dmi_stress_test_100_operations` | 100 DMI operations stress test |
 
 ## Running Tests
 
@@ -720,7 +728,7 @@ jobs:
       - name: Check Results
         run: |
           if [ $? -eq 0 ]; then
-            echo "✅ All 101 tests passed!"
+            echo "✅ All 131 tests passed!"
           else
             echo "❌ Tests failed"
             exit 1
@@ -753,7 +761,7 @@ echo "✅ All tests passed!"
 
 ### Test Execution Performance
 - **Individual test**: 10-100 ms average
-- **Full suite (101 tests)**: ~5 seconds
+- **Full suite (131 tests)**: ~15 seconds
 - **With waveform**: +2-3 seconds
 - **Memory usage**: ~100 MB
 - **CPU usage**: 1 core, ~50-80%
@@ -845,7 +853,7 @@ echo "✅ All tests passed!"
 - Test 50-52: Deselection escape variations
 - Additional tests for all escape sequence edge cases
 
-**Verification**: All 123 tests pass, confirming reliable operation in all states.
+**Verification**: All 131 tests pass, confirming reliable operation in all states.
 
 ### 2. Free-Running Clock Requirement
 **Decision**: System clock runs continuously at 100MHz.
@@ -1115,7 +1123,7 @@ All tests execute automatically when running `make test-openocd` and produce com
 - [CHECKLIST.md](CHECKLIST.md) - Design verification checklist
 
 ### Test Files
-- [tb/test_cjtag.cpp](../tb/test_cjtag.cpp) - Complete test suite source (4,292 lines)
+- [tb/test_cjtag.cpp](../tb/test_cjtag.cpp) - Complete test suite source (5,100+ lines)
 - [tb/tb_cjtag.cpp](../tb/tb_cjtag.cpp) - Verilator testbench wrapper
 - [tb/test_idcode.cpp](../tb/test_idcode.cpp) - VPI IDCODE stress test
 - [openocd/cjtag.cfg](../openocd/cjtag.cfg) - OpenOCD integration test suite (18 steps)
@@ -1132,8 +1140,8 @@ All tests execute automatically when running `make test-openocd` and produce com
 
 The cJTAG Bridge test suite provides **comprehensive validation** with three distinct test suites:
 
-### 1. Automated Verilator Unit Tests (123 tests)
-- **123 test cases** covering complete protocol implementation (IEEE 1149.7 OScan1)
+### 1. Automated Verilator Unit Tests (131 tests)
+- **131 test cases** covering complete protocol implementation (IEEE 1149.7 OScan1)
 - **100% pass rate** with zero compilation warnings
 - Full JTAG TAP controller validation (all 16 states)
 - Complete RISC-V debug module integration (DTM, DTMCS, DMI)
@@ -1166,7 +1174,7 @@ make all
 **Expected Results** (all tests in ~15 seconds):
 ```
 ✅ ALL TESTS PASSED!
-Test Results: 123/123 tests passed
+Test Results: 131/131 tests passed
 ✅ VPI IDCODE Test PASSED
 IDCODE: 0x1DEAD3FF verified (100 iterations)
 ✅ OpenOCD Test PASSED

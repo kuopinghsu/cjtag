@@ -161,7 +161,7 @@ See [TEST_GUIDE.md](../docs/TEST_GUIDE.md) for complete test documentation.
 - 8+ toggles: Reset (any state → OFFLINE) ✅
 - Hardware reset (nTRST) supported ✅
 
-All escape sequences are fully implemented and validated by 123 comprehensive tests.
+All escape sequences are fully implemented and validated by 131 comprehensive tests.
 
 2. **OScan1 Only**: Only Scan Format 1 (OScan1) is implemented. OScan2-7 not supported.
 

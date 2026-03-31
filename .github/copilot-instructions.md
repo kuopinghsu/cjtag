@@ -62,7 +62,7 @@
 - **6-7 toggles**: Selection (OFFLINE→ONLINE_ACT) - SUPPORTED ✅
 - **8+ toggles**: Reset (any state→OFFLINE) - SUPPORTED ✅
 - **All escape sequences** are fully implemented and tested
-- **Expected Tests**: 123/123 passing tests
+- **Expected Tests**: 131/131 passing tests
 
 ## Verification Checklist
 Before considering any code change complete:
