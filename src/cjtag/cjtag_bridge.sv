@@ -533,4 +533,314 @@ module cjtag_bridge (
     end
     `endif
 
+    // =========================================================================
+    // SystemVerilog Assertions (SVA) - Verification Only
+    // =========================================================================
+    `ifndef SYNTHESIS
+
+    // -------------------------------------------------------------------------
+    // State Machine Assertions
+    // -------------------------------------------------------------------------
+
+    // Assert: State must always be one of the defined states
+    property valid_state;
+        @(posedge clk_i) disable iff (!ntrst_i)
+        (state == ST_OFFLINE) || (state == ST_ESCAPE) ||
+        (state == ST_ONLINE_ACT) || (state == ST_OSCAN1);
+    endproperty
+    assert property (valid_state)
+        else $error("[ASSERT] Invalid state detected: %0d", state);
+
+    // Assert: Reset brings system to OFFLINE state
+    property reset_to_offline;
+        @(posedge clk_i)
+        !ntrst_i |=> (state == ST_OFFLINE);
+    endproperty
+    assert property (reset_to_offline)
+        else $error("[ASSERT] Reset did not transition to OFFLINE");
+
+    // Assert: State transitions are legal (split by source state)
+    property legal_transition_from_offline;
+        @(posedge clk_i) disable iff (!ntrst_i)
+        (state == ST_OFFLINE) |=>
+            (state == ST_OFFLINE) || (state == ST_ESCAPE);
+    endproperty
+    assert property (legal_transition_from_offline)
+        else $error("[ASSERT] Illegal transition from OFFLINE to %0d", state);
+
+    property legal_transition_from_escape;
+        @(posedge clk_i) disable iff (!ntrst_i)
+        (state == ST_ESCAPE) |=>
+            (state == ST_OFFLINE) || (state == ST_ONLINE_ACT);
+    endproperty
+    assert property (legal_transition_from_escape)
+        else $error("[ASSERT] Illegal transition from ESCAPE to %0d", state);
+
+    property legal_transition_from_online_act;
+        @(posedge clk_i) disable iff (!ntrst_i)
+        (state == ST_ONLINE_ACT) |=>
+            (state == ST_ONLINE_ACT) || (state == ST_ESCAPE) ||
+            (state == ST_OSCAN1) || (state == ST_OFFLINE);
+    endproperty
+    assert property (legal_transition_from_online_act)
+        else $error("[ASSERT] Illegal transition from ONLINE_ACT to %0d", state);
+
+    property legal_transition_from_oscan1;
+        @(posedge clk_i) disable iff (!ntrst_i)
+        (state == ST_OSCAN1) |=>
+            (state == ST_OSCAN1) || (state == ST_ESCAPE) || (state == ST_OFFLINE);
+    endproperty
+    assert property (legal_transition_from_oscan1)
+        else $error("[ASSERT] Illegal transition from OSCAN1 to %0d", state);
+
+    // -------------------------------------------------------------------------
+    // Counter Bounds Assertions
+    // -------------------------------------------------------------------------
+
+    // Assert: Toggle counter must not exceed 31 (5-bit saturating counter)
+    // Note: This is tautological for a 5-bit counter but useful for formal verification
+    /* verilator lint_off CMPCONST */
+    property toggle_count_bounds;
+        @(posedge clk_i) disable iff (!ntrst_i)
+        tmsc_toggle_count <= 5'd31;
+    endproperty
+    assert property (toggle_count_bounds)
+        else $error("[ASSERT] Toggle counter overflow: %0d", tmsc_toggle_count);
+    /* verilator lint_on CMPCONST */
+
+    // Assert: Activation bit counter must be in range 0-11 when in ONLINE_ACT
+    property activation_count_bounds;
+        @(posedge clk_i) disable iff (!ntrst_i)
+        (state == ST_ONLINE_ACT) |-> (activation_count <= 4'd11);
+    endproperty
+    assert property (activation_count_bounds)
+        else $error("[ASSERT] Activation counter out of bounds: %0d", activation_count);
+
+    // Assert: Bit position must be 0, 1, or 2 in OSCAN1 state
+    property bit_pos_bounds;
+        @(posedge clk_i) disable iff (!ntrst_i)
+        (state == ST_OSCAN1) |-> (bit_pos <= 2'd2);
+    endproperty
+    assert property (bit_pos_bounds)
+        else $error("[ASSERT] Bit position out of bounds: %0d", bit_pos);
+
+    // Assert: Bit position advances on TCKC negedge when stable in OSCAN1
+    // (Simplified check - just ensures progression happens)
+    property bit_pos_advances;
+        @(posedge clk_i) disable iff (!ntrst_i)
+        (state == ST_OSCAN1 && $past(state) == ST_OSCAN1 &&
+         $past(state, 2) == ST_OSCAN1 && $past(tckc_negedge)) |->
+            (bit_pos != $past(bit_pos, 2));
+    endproperty
+    assert property (bit_pos_advances)
+        else $error("[ASSERT] Bit position did not advance after TCKC negedge");
+
+    // -------------------------------------------------------------------------
+    // Status Signal Assertions
+    // -------------------------------------------------------------------------
+
+    // Assert: online_o is high only in OSCAN1 state
+    property online_only_in_oscan1;
+        @(posedge clk_i) disable iff (!ntrst_i)
+        online_o == (state == ST_OSCAN1);
+    endproperty
+    assert property (online_only_in_oscan1)
+        else $error("[ASSERT] online_o mismatch: online_o=%b, state=%0d",
+                    online_o, state);
+
+    // Assert: nsp_o is inverse of online state
+    property nsp_inverse_of_online;
+        @(posedge clk_i) disable iff (!ntrst_i)
+        nsp_o == !online_o;
+    endproperty
+    assert property (nsp_inverse_of_online)
+        else $error("[ASSERT] nsp_o should be inverse of online_o");
+
+    // -------------------------------------------------------------------------
+    // TCK Generation Assertions
+    // -------------------------------------------------------------------------
+
+    // Assert: TCK should only go high in OSCAN1 state at bit position 2
+    property tck_only_in_oscan1;
+        @(posedge clk_i) disable iff (!ntrst_i)
+        tck_o |-> (state == ST_OSCAN1);
+    endproperty
+    assert property (tck_only_in_oscan1)
+        else $error("[ASSERT] TCK high outside OSCAN1 state");
+
+    // Assert: TCK high only at bit position 2 in OSCAN1
+    property tck_only_at_bit2;
+        @(posedge clk_i) disable iff (!ntrst_i)
+        (state == ST_OSCAN1 && tck_o) |-> (bit_pos == 2'd2 || $past(bit_pos) == 2'd2);
+    endproperty
+    assert property (tck_only_at_bit2)
+        else $error("[ASSERT] TCK high at wrong bit position: %0d", bit_pos);
+
+    // Assert: TMS stays high when not in OSCAN1 (JTAG idle)
+    // Check with 1-cycle delay to account for pipeline
+    property tms_high_when_offline;
+        @(posedge clk_i) disable iff (!ntrst_i)
+        ($past(state) != ST_OSCAN1) |-> tms_o;
+    endproperty
+    assert property (tms_high_when_offline)
+        else $error("[ASSERT] TMS should be high when not in OSCAN1");
+
+    // -------------------------------------------------------------------------
+    // TMSC Bidirectional Control Assertions
+    // -------------------------------------------------------------------------
+
+    // Assert: TMSC output enable low only in OSCAN1 (or 1 cycle after leaving)
+    // Allow 1-cycle delay for pipeline
+    property tmsc_oen_output_mode;
+        @(posedge clk_i) disable iff (!ntrst_i)
+        !tmsc_oen |-> (state == ST_OSCAN1 || $past(state) == ST_OSCAN1);
+    endproperty
+    assert property (tmsc_oen_output_mode)
+        else $error("[ASSERT] TMSC output enabled outside OSCAN1");
+
+    // Assert: TMSC in input mode (oen=1) when not in OSCAN1
+    // Check with 1-cycle delay for pipeline
+    property tmsc_oen_input_when_offline;
+        @(posedge clk_i) disable iff (!ntrst_i)
+        ($past(state) != ST_OSCAN1 && $past(state, 2) != ST_OSCAN1) |-> tmsc_oen;
+    endproperty
+    assert property (tmsc_oen_input_when_offline)
+        else $error("[ASSERT] TMSC should be in input mode when not in OSCAN1");
+
+    // -------------------------------------------------------------------------
+    // Escape Sequence Assertions
+    // -------------------------------------------------------------------------
+
+    // Assert: Toggle counter resets on TCKC rising edge
+    property toggle_counter_reset_on_posedge;
+        @(posedge clk_i) disable iff (!ntrst_i)
+        tckc_posedge |=> (tmsc_toggle_count == 5'd0);
+    endproperty
+    assert property (toggle_counter_reset_on_posedge)
+        else $error("[ASSERT] Toggle counter not reset on TCKC posedge: %0d",
+                    tmsc_toggle_count);
+
+    // Assert: Transition to ESCAPE requires toggle count >= 4
+    property escape_requires_min_toggles;
+        @(posedge clk_i) disable iff (!ntrst_i)
+        (state != $past(state) && state == ST_ESCAPE) |->
+            ($past(tmsc_toggle_count) >= 5'd4);
+    endproperty
+    assert property (escape_requires_min_toggles)
+        else $error("[ASSERT] Entered ESCAPE with insufficient toggles: %0d",
+                    $past(tmsc_toggle_count));
+
+    // Assert: Return state is saved before entering ESCAPE
+    property return_state_valid;
+        @(posedge clk_i) disable iff (!ntrst_i)
+        (state == ST_ESCAPE) |->
+            (return_state == ST_OFFLINE || return_state == ST_ONLINE_ACT ||
+             return_state == ST_OSCAN1);
+    endproperty
+    assert property (return_state_valid)
+        else $error("[ASSERT] Invalid return_state in ESCAPE: %0d", return_state);
+
+    // -------------------------------------------------------------------------
+    // Synchronizer Assertions
+    // -------------------------------------------------------------------------
+
+    // Assert: Synchronizer stages are not X or Z in simulation
+    property no_x_in_sync;
+        @(posedge clk_i) disable iff (!ntrst_i)
+        !$isunknown(tckc_sync) && !$isunknown(tmsc_sync);
+    endproperty
+    assert property (no_x_in_sync)
+        else $error("[ASSERT] Unknown value in synchronizers");
+
+    // -------------------------------------------------------------------------
+    // Activation Packet Assertions
+    // -------------------------------------------------------------------------
+
+    // Assert: Activation counter resets when leaving ONLINE_ACT
+    property activation_count_reset;
+        @(posedge clk_i) disable iff (!ntrst_i)
+        ($past(state) == ST_ONLINE_ACT && state != ST_ONLINE_ACT) |->
+            (activation_count == 4'd0);
+    endproperty
+    assert property (activation_count_reset)
+        else $error("[ASSERT] Activation counter not reset when leaving ONLINE_ACT: %0d",
+                    activation_count);
+
+    // Assert: When entering OSCAN1 from ONLINE_ACT, bit_pos must be 0
+    property oscan1_starts_at_bit0;
+        @(posedge clk_i) disable iff (!ntrst_i)
+        ($past(state) == ST_ONLINE_ACT && state == ST_OSCAN1) |->
+            (bit_pos == 2'd0);
+    endproperty
+    assert property (oscan1_starts_at_bit0)
+        else $error("[ASSERT] OSCAN1 did not start at bit_pos 0: %0d", bit_pos);
+
+    // -------------------------------------------------------------------------
+    // Edge Detection Assertions
+    // -------------------------------------------------------------------------
+
+    // Assert: Posedge and negedge are mutually exclusive
+    property edges_mutually_exclusive;
+        @(posedge clk_i) disable iff (!ntrst_i)
+        !(tckc_posedge && tckc_negedge);
+    endproperty
+    assert property (edges_mutually_exclusive)
+        else $error("[ASSERT] Both TCKC posedge and negedge detected simultaneously");
+
+    // Assert: TCKC edge detection corresponds to actual signal change
+    // Note: Edge detection has 1 cycle delay, so check previous values
+    property posedge_detection_valid;
+        @(posedge clk_i) disable iff (!ntrst_i)
+        tckc_posedge |-> ($past(tckc_prev) == 1'b0 && $past(tckc_s) == 1'b1);
+    endproperty
+    assert property (posedge_detection_valid)
+        else $error("[ASSERT] Invalid TCKC posedge detection");
+
+    property negedge_detection_valid;
+        @(posedge clk_i) disable iff (!ntrst_i)
+        tckc_negedge |-> ($past(tckc_prev) == 1'b1 && $past(tckc_s) == 1'b0);
+    endproperty
+    assert property (negedge_detection_valid)
+        else $error("[ASSERT] Invalid TCKC negedge detection");
+
+    // -------------------------------------------------------------------------
+    // Coverage Properties
+    // -------------------------------------------------------------------------
+
+    // Cover: All states are reached
+    cover property (@(posedge clk_i) state == ST_OFFLINE);
+    cover property (@(posedge clk_i) state == ST_ESCAPE);
+    cover property (@(posedge clk_i) state == ST_ONLINE_ACT);
+    cover property (@(posedge clk_i) state == ST_OSCAN1);
+
+    // Cover: All state transitions
+    cover property (@(posedge clk_i) disable iff (!ntrst_i)
+        $past(state) == ST_OFFLINE && state == ST_ESCAPE);
+    cover property (@(posedge clk_i) disable iff (!ntrst_i)
+        $past(state) == ST_ESCAPE && state == ST_ONLINE_ACT);
+    cover property (@(posedge clk_i) disable iff (!ntrst_i)
+        $past(state) == ST_ONLINE_ACT && state == ST_OSCAN1);
+    cover property (@(posedge clk_i) disable iff (!ntrst_i)
+        $past(state) == ST_OSCAN1 && state == ST_ESCAPE);
+
+    // Cover: Escape sequences with different toggle counts
+    cover property (@(posedge clk_i) disable iff (!ntrst_i)
+        tmsc_toggle_count == 5'd4);
+    cover property (@(posedge clk_i) disable iff (!ntrst_i)
+        tmsc_toggle_count == 5'd6);
+    cover property (@(posedge clk_i) disable iff (!ntrst_i)
+        tmsc_toggle_count == 5'd8);
+    cover property (@(posedge clk_i) disable iff (!ntrst_i)
+        tmsc_toggle_count == 5'd31);  // Saturation
+
+    // Cover: Full OScan1 packet processing (all bit positions)
+    cover property (@(posedge clk_i) disable iff (!ntrst_i)
+        state == ST_OSCAN1 && bit_pos == 2'd0);
+    cover property (@(posedge clk_i) disable iff (!ntrst_i)
+        state == ST_OSCAN1 && bit_pos == 2'd1);
+    cover property (@(posedge clk_i) disable iff (!ntrst_i)
+        state == ST_OSCAN1 && bit_pos == 2'd2);
+
+    `endif // SYNTHESIS
+
 endmodule
