@@ -3037,17 +3037,17 @@ TEST_CASE(cp_validation_all_bits_correct) {
     // Test CP validation with correct XOR parity
     // CP[i] = OAC[i] ⊕ EC[i]
     // OAC=0011 (LSB), EC=0001 (LSB), CP=0010 (LSB)
-    
+
     tb.send_escape_sequence(6);
     tb.send_oac_sequence(); // Uses correct CP
     for (int i = 0; i < 50; i++) tb.tick();
-    
+
     ASSERT_EQ(tb.dut->online_o, 1, "Correct CP parity should activate");
 }
 
 TEST_CASE(cp_validation_single_bit_errors) {
     // Test CP validation rejects single-bit errors in CP field
-    
+
     // Test CP bit 0 error
     tb.send_escape_sequence(6);
     int packet_cp0_err[12] = {0, 0, 1, 1,  0, 0, 0, 1,  1, 0, 1, 0}; // CP[0] flipped
@@ -3056,7 +3056,7 @@ TEST_CASE(cp_validation_single_bit_errors) {
     }
     for (int i = 0; i < 50; i++) tb.tick();
     ASSERT_EQ(tb.dut->online_o, 0, "CP bit 0 error should reject");
-    
+
     // Test CP bit 1 error
     tb.send_escape_sequence(8);
     for (int i = 0; i < 50; i++) tb.tick();
@@ -3067,7 +3067,7 @@ TEST_CASE(cp_validation_single_bit_errors) {
     }
     for (int i = 0; i < 50; i++) tb.tick();
     ASSERT_EQ(tb.dut->online_o, 0, "CP bit 1 error should reject");
-    
+
     // Test CP bit 2 error
     tb.send_escape_sequence(8);
     for (int i = 0; i < 50; i++) tb.tick();
@@ -3078,7 +3078,7 @@ TEST_CASE(cp_validation_single_bit_errors) {
     }
     for (int i = 0; i < 50; i++) tb.tick();
     ASSERT_EQ(tb.dut->online_o, 0, "CP bit 2 error should reject");
-    
+
     // Test CP bit 3 error
     tb.send_escape_sequence(8);
     for (int i = 0; i < 50; i++) tb.tick();
@@ -3093,7 +3093,7 @@ TEST_CASE(cp_validation_single_bit_errors) {
 
 TEST_CASE(cp_validation_multiple_bit_errors) {
     // Test CP validation rejects multiple-bit errors
-    
+
     // All CP bits wrong
     tb.send_escape_sequence(6);
     int packet_all_wrong[12] = {0, 0, 1, 1,  0, 0, 0, 1,  1, 1, 0, 1};
@@ -3102,7 +3102,7 @@ TEST_CASE(cp_validation_multiple_bit_errors) {
     }
     for (int i = 0; i < 50; i++) tb.tick();
     ASSERT_EQ(tb.dut->online_o, 0, "All CP bits wrong should reject");
-    
+
     // Two CP bits wrong
     tb.send_escape_sequence(8);
     for (int i = 0; i < 50; i++) tb.tick();
@@ -3117,7 +3117,7 @@ TEST_CASE(cp_validation_multiple_bit_errors) {
 
 TEST_CASE(cp_validation_with_wrong_ec) {
     // Test that wrong EC with matching CP still fails (OAC must be correct too)
-    
+
     tb.send_escape_sequence(6);
     // Wrong EC: 0000 instead of 0001, with CP that would match this wrong EC
     int packet_wrong_ec[12] = {0, 0, 1, 1,  0, 0, 0, 0,  0, 0, 1, 1}; // EC=0000, CP=0011
@@ -3130,7 +3130,7 @@ TEST_CASE(cp_validation_with_wrong_ec) {
 
 TEST_CASE(cp_validation_all_zeros) {
     // Test CP = 0000 (all zeros) - should fail since correct CP is 0010
-    
+
     tb.send_escape_sequence(6);
     int packet_cp_zeros[12] = {0, 0, 1, 1,  0, 0, 0, 1,  0, 0, 0, 0};
     for (int i = 0; i < 12; i++) {
@@ -3142,7 +3142,7 @@ TEST_CASE(cp_validation_all_zeros) {
 
 TEST_CASE(cp_validation_all_ones) {
     // Test CP = 1111 (all ones) - should fail since correct CP is 0010
-    
+
     tb.send_escape_sequence(6);
     int packet_cp_ones[12] = {0, 0, 1, 1,  0, 0, 0, 1,  1, 1, 1, 1};
     for (int i = 0; i < 12; i++) {
@@ -3159,9 +3159,9 @@ TEST_CASE(cp_xor_calculation_verification) {
     // Bit 1: 0⊕0=0 ✓
     // Bit 2: 1⊕0=1 ✓
     // Bit 3: 1⊕1=0 ✓
-    
+
     tb.send_escape_sequence(6);
-    
+
     // Send correct packet
     int oac[4] = {0, 0, 1, 1};
     int ec[4] = {0, 0, 0, 1};
@@ -3169,50 +3169,50 @@ TEST_CASE(cp_xor_calculation_verification) {
     for (int i = 0; i < 4; i++) {
         cp[i] = oac[i] ^ ec[i];
     }
-    
+
     // Verify our calculation matches expected
     ASSERT_EQ(cp[0], 0, "CP[0] should be 0");
     ASSERT_EQ(cp[1], 0, "CP[1] should be 0");
     ASSERT_EQ(cp[2], 1, "CP[2] should be 1");
     ASSERT_EQ(cp[3], 0, "CP[3] should be 0");
-    
+
     // Send the packet
     for (int i = 0; i < 4; i++) tb.tckc_cycle(oac[i]);
     for (int i = 0; i < 4; i++) tb.tckc_cycle(ec[i]);
     for (int i = 0; i < 4; i++) tb.tckc_cycle(cp[i]);
-    
+
     for (int i = 0; i < 50; i++) tb.tick();
     ASSERT_EQ(tb.dut->online_o, 1, "Correctly calculated CP should activate");
 }
 
 TEST_CASE(cp_validation_stress_test) {
     // Stress test: Try many invalid CP values rapidly
-    
+
     for (int attempt = 0; attempt < 10; attempt++) {
         tb.send_escape_sequence(6);
-        
+
         // Try different invalid CP patterns
         int invalid_cp = (attempt % 4);
         int packet[12] = {0, 0, 1, 1,  0, 0, 0, 1,  0, 0, 1, 0}; // Start with correct
-        
+
         // Corrupt one CP bit based on attempt
         if (invalid_cp < 4) {
             packet[8 + invalid_cp] = !packet[8 + invalid_cp];
         }
-        
+
         for (int i = 0; i < 12; i++) {
             tb.tckc_cycle(packet[i]);
         }
         for (int i = 0; i < 50; i++) tb.tick();
-        
+
         // Should still be offline
         ASSERT_EQ(tb.dut->online_o, 0, "Invalid CP should not activate");
-        
+
         // Reset for next iteration
         tb.send_escape_sequence(8);
         for (int i = 0; i < 50; i++) tb.tick();
     }
-    
+
     // Finally send correct sequence
     tb.send_escape_sequence(6);
     tb.send_oac_sequence();

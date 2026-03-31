@@ -270,7 +270,7 @@ The 131 tests are organized into 13 comprehensive categories:
 make all
 ```
 Executes all three test suites in sequence:
-- 123 automated tests
+- 131 automated tests
 - 100-iteration VPI IDCODE test
 - 18-step OpenOCD integration test with comprehensive statistics
 

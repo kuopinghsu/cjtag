@@ -772,10 +772,12 @@ cJTAG Bridge Automated Test Suite
 Running test: 01. reset_state ... PASS
 Running test: 02. escape_sequence_online_6_edges ... PASS
 ...
-Running test: 121. dmi_stress_test_100_operations ... PASS
+Running test: 129. mixed_idcode_dtmcs_dmi_sequence ... PASS
+Running test: 130. debug_module_all_registers ... PASS
+Running test: 131. dmi_stress_test_100_operations ... PASS
 
 ========================================
-Test Results: 121 tests passed
+Test Results: 131 tests passed
 ========================================
 ✅ ALL TESTS PASSED!
 ```
@@ -805,7 +807,7 @@ Key signals to observe in `cjtag.fst`:
 | Target | Description |
 |--------|-------------|
 | `make` or `make build` | Build Verilator simulation |
-| `make test` | Run 121 Verilator automated tests |
+| `make test` | Run 131 Verilator automated tests |
 | `make test-idcode` | Run VPI IDCODE verification test |
 | `make test-openocd` | Run 8 OpenOCD integration tests |
 | `make test-trace` | Run tests with waveform generation |

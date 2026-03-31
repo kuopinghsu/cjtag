@@ -873,7 +873,7 @@ Future work: Add automated testcases in `tb/` directory.
 - [README.md](README.md) - This file: Project overview and quick start
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - Detailed design architecture
 - [docs/PROTOCOL.md](docs/PROTOCOL.md) - cJTAG protocol specification
-- [docs/TEST_GUIDE.md](docs/TEST_GUIDE.md) - Comprehensive test suite guide (121 tests)- [docs/PERFORMANCE.md](docs/PERFORMANCE.md) - Performance optimization guide- [docs/CHECKLIST.md](docs/CHECKLIST.md) - Design verification checklist
+- [docs/TEST_GUIDE.md](docs/TEST_GUIDE.md) - Comprehensive test suite guide (131 tests)- [docs/PERFORMANCE.md](docs/PERFORMANCE.md) - Performance optimization guide- [docs/CHECKLIST.md](docs/CHECKLIST.md) - Design verification checklist
 
 ## License
 
@@ -883,7 +883,7 @@ This project is provided as-is for educational and development purposes.
 
 Contributions welcome! Areas for improvement:
 
-- [x] Comprehensive automated test suite (121 tests completed ✅)
+- [x] Comprehensive automated test suite (131 tests completed ✅)
 - [x] CP (Check Packet) parity checking (IEEE 1149.7 compliant ✅)
 - [ ] Implement more scanning formats (SF1-SF3)
 - [ ] Support multiple TAP devices

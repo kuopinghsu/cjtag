@@ -121,7 +121,7 @@ make build
 
 ### Run Tests
 ```bash
-make test              # 121 Verilator unit/integration tests
+make test              # 131 Verilator unit/integration tests
 make test-idcode       # VPI IDCODE verification test
 make test-openocd      # 8 OpenOCD integration tests
 ```
@@ -135,7 +135,7 @@ make clean && make VERBOSE=1
 ## Verification
 
 All RTL modules are verified by comprehensive test suites:
-- **121 Verilator automated tests** in [tb/test_cjtag.cpp](../tb/test_cjtag.cpp)
+- **131 Verilator automated tests** in [tb/test_cjtag.cpp](../tb/test_cjtag.cpp)
 - **8 OpenOCD integration tests** via VPI interface
 - **1 VPI IDCODE verification test** in [tb/test_idcode.cpp](../tb/test_idcode.cpp)
 - **100% pass rate** across all test suites
