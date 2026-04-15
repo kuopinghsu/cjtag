@@ -149,6 +149,8 @@ module cjtag_bridge (
             tckc_is_high <= 1'b0;
             tmsc_toggle_count <= 5'd0;
         end else begin
+            // Escape detection: Monitor TMSC toggles while TCKC is high
+            // Active in ALL states to allow reset (8+ toggles) from any state
             // Track when TCKC goes high
             if (tckc_posedge) begin
                 tckc_is_high <= 1'b1;
@@ -158,7 +160,7 @@ module cjtag_bridge (
                 $display("[%0t] TCKC POSEDGE detected! Resetting toggle count", $time);
                 `endif
             end
-            // Track TCKC going low
+            // Track TCKC going low (escape sequence ends)
             else if (tckc_negedge) begin
                 tckc_is_high <= 1'b0;
 
@@ -254,18 +256,12 @@ module cjtag_bridge (
                                  $time, tmsc_toggle_count);
                         `endif
                     end
-                    // Invalid escape sequence - return to previous state or OFFLINE
+                    // Invalid escape sequence - force offline
                     else begin
-                        if (return_state == ST_OSCAN1 || return_state == ST_ONLINE_ACT) begin
-                            // Invalid escape during active states - force offline
-                            state <= ST_OFFLINE;
-                            activation_shift <= 11'd0;
-                            activation_count <= 4'd0;
-                            bit_pos <= 2'd0;
-                        end else begin
-                            // Stay in OFFLINE
-                            state <= ST_OFFLINE;
-                        end
+                        state <= ST_OFFLINE;
+                        activation_shift <= 11'd0;
+                        activation_count <= 4'd0;
+                        bit_pos <= 2'd0;
 
                         `ifdef VERBOSE
                         $display("[%0t] ESCAPE -> %0d (invalid sequence: %0d toggles)",
@@ -332,9 +328,9 @@ module cjtag_bridge (
                             // OAC check: bits [3:0] == 4'b1100
                             // EC check: bits [7:4] == 4'b1000
                             // CP check: bits [11:8] == (bits[3:0] XOR bits[7:4])
-                            if ({tmsc_s, activation_shift[10:0]}[3:0] == 4'b1100 &&
-                                {tmsc_s, activation_shift[10:0]}[7:4] == 4'b1000 &&
-                                {tmsc_s, activation_shift[10:0]}[11:8] == ({tmsc_s, activation_shift[10:0]}[3:0] ^ {tmsc_s, activation_shift[10:0]}[7:4])) begin
+                            if (activation_shift[3:0] == 4'b1100 &&
+                                activation_shift[7:4] == 4'b1000 &&
+                                {tmsc_s, activation_shift[10:8]} == (activation_shift[3:0] ^ activation_shift[7:4])) begin
                                 state <= ST_OSCAN1;
                                 bit_pos <= 2'd0;
 
@@ -425,11 +421,6 @@ module cjtag_bridge (
             tmsc_oen_int    <= 1'b1;  // Default to input mode
             tdo_sampled     <= 1'b0;
         end else begin
-            // Sample TDO when TCK is high (after TAP has updated it)
-            if (tck_int && state == ST_OSCAN1 && bit_pos == 2'd2) begin
-                tdo_sampled <= tdo_i;
-            end
-
             case (state)
                 ST_OFFLINE, ST_ONLINE_ACT, ST_ESCAPE: begin
                     // Keep JTAG interface idle
@@ -441,6 +432,15 @@ module cjtag_bridge (
 
                 ST_OSCAN1: begin
                     // Update outputs based on TCKC edges and bit position
+
+                    // Sample TDO while TCK is high: the TAP shifts on posedge TCK (which is
+                    // registered through tck_int). By the NEXT clk_i cycle after tck_int goes
+                    // high, the TAP has already committed its shift and tdo_i reflects the
+                    // post-shift value. Continuously latching here ensures tdo_sampled is
+                    // correct by the time the probe reads TMSC during the TDO bit slot.
+                    if (tck_int) begin
+                        tdo_sampled <= tdo_i;
+                    end
 
                     // On TCKC rising edge - generate TCK pulse and drive TDO
                     if (tckc_posedge) begin
@@ -463,15 +463,16 @@ module cjtag_bridge (
                             end
 
                             2'd2: begin
-                                // After TMS sampled - generate TCK pulse, drive TDO
+                                // After TMS sampled - generate TCK pulse, enable TDO output
+                                // NOTE: tdo_sampled is captured in the cycle(s) AFTER this
+                                // (when tck_int==1) so the TAP has time to commit its shift.
                                 tms_int <= tmsc_sampled;
                                 tck_int <= 1'b1;       // Generate TCK pulse
                                 tmsc_oen_int <= 1'b0;  // Output mode for TDO
-                                // TDO will be sampled on next clock cycle after TCK rises
 
                                 `ifdef VERBOSE
-                                $display("[%0t] OSCAN1 posedge: bit_pos=2, TCK high, tms_int=%b, driving TDO=%b",
-                                         $time, tmsc_sampled, tdo_i);
+                                $display("[%0t] OSCAN1 posedge: bit_pos=2, TCK high, tms_int=%b",
+                                         $time, tmsc_sampled);
                                 `endif
                             end
 
@@ -508,7 +509,9 @@ module cjtag_bridge (
     assign tms_o = tms_int;
     assign tdi_o = tdi_int;
 
-    // TMSC output: Drive sampled TDO during third bit of OScan1 packet
+    // TMSC output: Drive TDO only during the third (TDO) bit slot of an OScan1 packet.
+    // Output enable (tmsc_oen_int=0) gates it at other times, but driving 0 outside
+    // the slot avoids any glitch that could be misinterpreted by other TAPs in a scan chain.
     assign tmsc_o = (state == ST_OSCAN1 && bit_pos == 2'd2) ? tdo_sampled : 1'b0;
 
     // TMSC output enable: Registered, changes on rising edge
