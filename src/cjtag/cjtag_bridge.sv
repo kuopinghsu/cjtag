@@ -264,8 +264,8 @@ module cjtag_bridge (
                         bit_pos <= 2'd0;
 
                         `ifdef VERBOSE
-                        $display("[%0t] ESCAPE -> %0d (invalid sequence: %0d toggles)",
-                                 $time, (return_state == ST_OFFLINE) ? ST_OFFLINE : ST_OFFLINE, tmsc_toggle_count);
+                        $display("[%0t] ESCAPE -> OFFLINE (invalid sequence: %0d toggles)",
+                                 $time, tmsc_toggle_count);
                         `endif
                     end
                 end
@@ -433,11 +433,10 @@ module cjtag_bridge (
                 ST_OSCAN1: begin
                     // Update outputs based on TCKC edges and bit position
 
-                    // Sample TDO while TCK is high: the TAP shifts on posedge TCK (which is
-                    // registered through tck_int). By the NEXT clk_i cycle after tck_int goes
-                    // high, the TAP has already committed its shift and tdo_i reflects the
-                    // post-shift value. Continuously latching here ensures tdo_sampled is
-                    // correct by the time the probe reads TMSC during the TDO bit slot.
+                    // Sample TDO while TCK is high: the TAP registers TDO on negedge TCK,
+                    // so tdo_i is stable and correct throughout the TCK-high period.
+                    // Continuously latching here ensures tdo_sampled is captured and held
+                    // for the probe to read on TMSC during the TDO bit slot.
                     if (tck_int) begin
                         tdo_sampled <= tdo_i;
                     end
@@ -463,9 +462,8 @@ module cjtag_bridge (
                             end
 
                             2'd2: begin
-                                // After TMS sampled - generate TCK pulse, enable TDO output
-                                // NOTE: tdo_sampled is captured in the cycle(s) AFTER this
-                                // (when tck_int==1) so the TAP has time to commit its shift.
+                                // After TMS sampled - generate TCK pulse, enable TDO output.
+                                // tdo_sampled will be updated once tck_int is high (above).
                                 tms_int <= tmsc_sampled;
                                 tck_int <= 1'b1;       // Generate TCK pulse
                                 tmsc_oen_int <= 1'b0;  // Output mode for TDO

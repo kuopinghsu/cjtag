@@ -116,12 +116,13 @@ module jtag_tap #(
                 end
 
                 CAPTURE_IR: begin
-                    // Load current instruction for readback
-                    // Note: IEEE 1149.1 requires bits [1:0] = 01, but we implement full readback
-                    ir_shift <= ir_reg;
+                    // IEEE 1149.1 requires bits[1:0] of the captured value to be 2'b01
+                    // for scan integrity checking by the host. Upper bits carry the
+                    // current instruction for readback.
+                    ir_shift <= {ir_reg[IR_LEN-1:2], 2'b01};
                     `ifdef VERBOSE
-                    $display("[%0t] TAP: CAPTURE_IR, loading ir_reg=%b (%h) into ir_shift",
-                             $time, ir_reg, ir_reg);
+                    $display("[%0t] TAP: CAPTURE_IR, loading {ir_reg[%0d:2],2'b01} = %b (%h)",
+                             $time, IR_LEN-1, {ir_reg[IR_LEN-1:2], 2'b01}, {ir_reg[IR_LEN-1:2], 2'b01});
                     `endif
                 end
 
@@ -198,6 +199,9 @@ module jtag_tap #(
 
     // =========================================================================
     // TDO Output Multiplexer
+    // IEEE 1149.1: TDO drives the LSB of the active shift register.
+    // Combinatorial output: TDO updates at posedge TCK (when registers shift),
+    // presenting the new LSB immediately for the debugger to sample.
     // =========================================================================
     always_comb begin
         case (state)

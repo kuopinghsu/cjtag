@@ -461,11 +461,10 @@ TEST_CASE(jtag_tap_idcode) {
     tb.send_oscan1_packet(0, 1, nullptr); // TMS=1: RUN_TEST_IDLE -> SELECT_DR
     tb.send_oscan1_packet(0, 0, nullptr); // TMS=0: SELECT_DR -> CAPTURE_DR
 
-    // Enter SHIFT-DR and read first bit
+    // Read 32 bits of IDCODE from SHIFT-DR
     int first_bit = 0;
-    tb.send_oscan1_packet(0, 0, &first_bit); // TMS=0: CAPTURE_DR -> SHIFT-DR, reads bit 0
+    tb.send_oscan1_packet(0, 0, &first_bit); // TMS=0: CAPTURE_DR -> SHIFT_DR, reads bit 0
 
-    // Read remaining 31 bits (total 32 bits)
     uint32_t idcode = first_bit; // Start with bit 0
     for (int i = 1; i < 32; i++) {
         int tdo = 0;
@@ -1489,7 +1488,7 @@ TEST_CASE(idcode_multiple_reads) {
         tb.send_oscan1_packet(0, 0, nullptr); // SELECT_DR -> CAPTURE_DR
 
         int first_bit = 0;
-        tb.send_oscan1_packet(0, 0, &first_bit); // CAPTURE_DR -> SHIFT_DR
+        tb.send_oscan1_packet(0, 0, &first_bit); // CAPTURE_DR -> SHIFT_DR, reads bit 0
 
         uint32_t idcode = first_bit;
         for (int i = 1; i < 32; i++) {
@@ -1615,7 +1614,7 @@ TEST_CASE(oscan1_all_tdo_values) {
 
     // Read IDCODE and verify specific bit patterns
     int first_bit = 0;
-    tb.send_oscan1_packet(0, 0, &first_bit);
+    tb.send_oscan1_packet(0, 0, &first_bit); // CAPTURE_DR -> SHIFT_DR, reads bit 0
 
     // IDCODE = 0x1DEAD3FF, LSB first
     // Bit 0 should be 1 (LSB of 0xFF)
@@ -1831,7 +1830,7 @@ TEST_CASE(realistic_debug_session) {
     tb.send_oscan1_packet(0, 0, nullptr); // SELECT_DR -> CAPTURE_DR
 
     int first_bit = 0;
-    tb.send_oscan1_packet(0, 0, &first_bit); // CAPTURE_DR -> SHIFT_DR
+    tb.send_oscan1_packet(0, 0, &first_bit); // First SHIFT, reads IDCODE bit 0
 
     uint32_t idcode = first_bit;
     for (int i = 1; i < 32; i++) {
@@ -2650,7 +2649,7 @@ TEST_CASE(tap_dr_capture_value) {
     tb.send_oscan1_packet(0, 0, nullptr);
 
     // Enter SHIFT-DR (IDCODE is captured)
-    // First bit read is from CAPTURE-DR
+    // First bit read is from first actual SHIFT_DR packet
     int first_bit = 0;
     tb.send_oscan1_packet(0, 0, &first_bit);
 
@@ -2749,7 +2748,7 @@ TEST_CASE(back_to_back_idcode_reads) {
         tb.send_oscan1_packet(0, 0, nullptr);
 
         int bit = 0;
-        tb.send_oscan1_packet(0, 0, &bit);
+        tb.send_oscan1_packet(0, 0, &bit); // First SHIFT, reads bit 0
 
         uint32_t idcode = bit;
         for (int i = 1; i < 32; i++) {
@@ -2830,7 +2829,7 @@ TEST_CASE(software_reset_via_tap) {
     tb.send_oscan1_packet(0, 0, nullptr);
 
     int bit = 0;
-    tb.send_oscan1_packet(0, 0, &bit);
+    tb.send_oscan1_packet(0, 0, &bit); // First SHIFT, reads IDCODE bit 0
     ASSERT_EQ(bit, 1, "TAP reset should restore IDCODE");
 }
 
@@ -3284,7 +3283,7 @@ TEST_CASE(dtmcs_register_read) {
     // Read 32 bits of DTMCS
     uint32_t dtmcs = 0;
     int first_bit = 0;
-    tb.send_oscan1_packet(0, 0, &first_bit); // CAPTURE_DR -> SHIFT_DR
+    tb.send_oscan1_packet(0, 0, &first_bit); // First SHIFT, reads bit 0
     dtmcs = first_bit;
 
     for (int i = 1; i < 32; i++) {
@@ -3336,7 +3335,7 @@ TEST_CASE(dtmcs_register_format) {
 
     uint32_t dtmcs = 0;
     int first_bit = 0;
-    tb.send_oscan1_packet(0, 0, &first_bit);
+    tb.send_oscan1_packet(0, 0, &first_bit); // First SHIFT, reads bit 0
     dtmcs = first_bit;
 
     for (int i = 1; i < 32; i++) {
@@ -3454,14 +3453,9 @@ TEST_CASE(debug_module_ir_scan) {
     tb.send_oscan1_packet(0, 1, nullptr); // -> SELECT_IR
     tb.send_oscan1_packet(0, 0, nullptr); // -> CAPTURE_IR
 
-    // Transition to SHIFT_IR (CAPTURE happens on this clock) and read bit 0
+    // Shift in 5 bits while reading back captured IR
     uint8_t ir_readback = 0;
-    int tdo_bit = 0;
-    tb.send_oscan1_packet((0x10 >> 0) & 1, 0, &tdo_bit); // CAPTURE_IR -> SHIFT_IR, read bit 0
-    ir_readback = tdo_bit;
-
-    // Shift in remaining 4 bits
-    for (int i = 1; i < 5; i++) {
+    for (int i = 0; i < 5; i++) {
         int tdi = (0x10 >> i) & 1;
         int tms = (i == 4) ? 1 : 0;
         int tdo = 0;
@@ -3479,14 +3473,9 @@ TEST_CASE(debug_module_ir_scan) {
     tb.send_oscan1_packet(0, 1, nullptr); // -> SELECT_IR
     tb.send_oscan1_packet(0, 0, nullptr); // -> CAPTURE_IR
 
-    // Transition to SHIFT_IR (CAPTURE happens on this clock) and read bit 0
+    // Shift in 5 bits while reading back captured IR (should be DTMCS=0x10)
     ir_readback = 0;
-    tdo_bit = 0;
-    tb.send_oscan1_packet((0x11 >> 0) & 1, 0, &tdo_bit); // CAPTURE_IR -> SHIFT_IR, read bit 0
-    ir_readback = tdo_bit;
-
-    // Shift in remaining 4 bits
-    for (int i = 1; i < 5; i++) {
+    for (int i = 0; i < 5; i++) {
         int tdi = (0x11 >> i) & 1;
         int tms = (i == 4) ? 1 : 0;
         int tdo = 0;
@@ -3498,7 +3487,10 @@ TEST_CASE(debug_module_ir_scan) {
     tb.send_oscan1_packet(0, 1, nullptr);
 
     // Should read back DTMCS (0x10) that was previously loaded
-    ASSERT_EQ(ir_readback, 0x10, "IR should read back previous instruction (DTMCS)");
+    // Per IEEE 1149.1, CAPTURE_IR loads {ir_reg[4:2], 2'b01}: upper bits from ir_reg,
+    // lower 2 bits forced to 2'b01 for scan integrity. For ir_reg=0x10 (DTMCS=5'b10000),
+    // captured value = {100, 01} = 5'b10001 = 0x11.
+    ASSERT_EQ(ir_readback, 0x11, "IR should read back DTMCS with IEEE 1149.1 mandatory bits[1:0]=01");
 }
 
 TEST_CASE(dmi_write_dmcontrol) {
@@ -3609,7 +3601,7 @@ TEST_CASE(dmi_read_after_write) {
 
     // Get the read result
     tb.send_oscan1_packet(0, 1, nullptr);
-    tb.send_oscan1_packet(0, 0, nullptr);
+    tb.send_oscan1_packet(0, 0, nullptr);  // -> CAPTURE_DR
     uint64_t dmi_result = 0;
     for (int i = 0; i < 41; i++) {
         int tdo = 0;
@@ -3664,7 +3656,7 @@ TEST_CASE(dmi_hartinfo_register) {
     tb.send_oscan1_packet(0, 0, nullptr);
     uint64_t dmi_result = 0;
     int first_bit = 0;
-    tb.send_oscan1_packet(0, 0, &first_bit);
+    tb.send_oscan1_packet(0, 0, &first_bit); // First SHIFT, reads bit 0
     dmi_result = first_bit;
     for (int i = 1; i < 41; i++) {
         int tdo = 0;
@@ -3763,7 +3755,7 @@ TEST_CASE(dtmcs_dmistat_field) {
     tb.send_oscan1_packet(0, 0, nullptr);
     uint32_t dtmcs = 0;
     int first_bit = 0;
-    tb.send_oscan1_packet(0, 0, &first_bit);
+    tb.send_oscan1_packet(0, 0, &first_bit); // First SHIFT, reads bit 0
     dtmcs = first_bit;
     for (int i = 1; i < 32; i++) {
         int tdo = 0;
@@ -3820,7 +3812,7 @@ TEST_CASE(sequential_dmi_reads) {
         tb.send_oscan1_packet(0, 0, nullptr);
         uint64_t dmi_result = 0;
         int first_bit = 0;
-        tb.send_oscan1_packet(0, 0, &first_bit);
+        tb.send_oscan1_packet(0, 0, &first_bit); // First SHIFT, reads bit 0
         dmi_result = first_bit;
         for (int i = 1; i < 41; i++) {
             int tdo = 0;
@@ -3915,7 +3907,7 @@ TEST_CASE(dmi_41bit_boundary_test) {
 
     // Verify 41-bit shifting works
     tb.send_oscan1_packet(0, 1, nullptr);
-    tb.send_oscan1_packet(0, 0, nullptr);
+    tb.send_oscan1_packet(0, 0, nullptr);  // -> CAPTURE_DR
     uint64_t dmi_result = 0;
     for (int i = 0; i < 41; i++) {
         int tdo = 0;
@@ -3944,7 +3936,7 @@ TEST_CASE(complete_riscv_debug_init) {
     tb.send_oscan1_packet(0, 0, nullptr); // -> CAPTURE_DR
     uint32_t idcode = 0;
     int first_bit = 0;
-    tb.send_oscan1_packet(0, 0, &first_bit); // CAPTURE_DR -> SHIFT_DR
+    tb.send_oscan1_packet(0, 0, &first_bit); // First SHIFT, reads IDCODE bit 0
     idcode = first_bit;
     for (int i = 1; i < 32; i++) {
         int tdo = 0;
@@ -3974,7 +3966,7 @@ TEST_CASE(complete_riscv_debug_init) {
     tb.send_oscan1_packet(0, 0, nullptr); // -> CAPTURE_DR
     uint32_t dtmcs = 0;
     first_bit = 0;
-    tb.send_oscan1_packet(0, 0, &first_bit); // CAPTURE_DR -> SHIFT_DR
+    tb.send_oscan1_packet(0, 0, &first_bit); // First SHIFT, reads bit 0
     dtmcs = first_bit;
     for (int i = 1; i < 32; i++) {
         int tdo = 0;
@@ -4073,7 +4065,7 @@ TEST_CASE(dmcontrol_reset_bit) {
     tb.send_oscan1_packet(0, 0, nullptr);
 
     tb.send_oscan1_packet(0, 1, nullptr);
-    tb.send_oscan1_packet(0, 0, nullptr);
+    tb.send_oscan1_packet(0, 0, nullptr);  // -> CAPTURE_DR
     uint64_t dmi_result = 0;
     for (int i = 0; i < 41; i++) {
         int tdo = 0;
@@ -4126,7 +4118,7 @@ TEST_CASE(dmstatus_halt_flags) {
     tb.send_oscan1_packet(0, 0, nullptr);
     uint64_t dmi_result = 0;
     int first_bit = 0;
-    tb.send_oscan1_packet(0, 0, &first_bit);
+    tb.send_oscan1_packet(0, 0, &first_bit); // First SHIFT, reads bit 0
     dmi_result = first_bit;
     for (int i = 1; i < 41; i++) {
         int tdo = 0;
@@ -4181,7 +4173,7 @@ TEST_CASE(dmstatus_reset_flags) {
     tb.send_oscan1_packet(0, 0, nullptr);
     uint64_t dmi_result = 0;
     int first_bit = 0;
-    tb.send_oscan1_packet(0, 0, &first_bit);
+    tb.send_oscan1_packet(0, 0, &first_bit); // First SHIFT, reads bit 0
     dmi_result = first_bit;
     for (int i = 1; i < 41; i++) {
         int tdo = 0;
@@ -4263,7 +4255,7 @@ TEST_CASE(mixed_idcode_dtmcs_dmi_sequence) {
         tb.send_oscan1_packet(0, 0, nullptr); // -> CAPTURE_DR
         uint32_t idcode = 0;
         int first_bit = 0;
-        tb.send_oscan1_packet(0, 0, &first_bit); // CAPTURE_DR -> SHIFT_DR
+        tb.send_oscan1_packet(0, 0, &first_bit); // First SHIFT, reads IDCODE bit 0
         idcode = first_bit;
         for (int i = 1; i < 32; i++) {
             int tdo = 0;
@@ -4345,7 +4337,7 @@ TEST_CASE(debug_module_all_registers) {
         tb.send_oscan1_packet(0, 0, nullptr);
         uint64_t dmi_result = 0;
         int first_bit = 0;
-        tb.send_oscan1_packet(0, 0, &first_bit);
+        tb.send_oscan1_packet(0, 0, &first_bit); // First SHIFT, reads bit 0
         dmi_result = first_bit;
         for (int i = 1; i < 41; i++) {
             int tdo = 0;

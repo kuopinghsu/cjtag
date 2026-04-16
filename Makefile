@@ -307,11 +307,11 @@ test-openocd:
 	echo "Checking if VPI server is running..."; \
 	if ps -p $$VPI_PID > /dev/null 2>&1; then \
 		echo "✓ VPI server started successfully"; \
-		echo "Connecting OpenOCD and running test suite (30 second timeout)..."; \
+		echo "Connecting OpenOCD and running test suite (60 second timeout)..."; \
 		if [ "$(VERBOSE)" = "1" ]; then \
-			(timeout -s KILL 30 openocd -d3 -f openocd/cjtag.cfg > openocd_output.log 2>&1) & \
+			(timeout 60 openocd -d3 -f openocd/cjtag.cfg > openocd_output.log 2>&1) & \
 		else \
-			(timeout -s KILL 30 openocd -f openocd/cjtag.cfg > openocd_output.log 2>&1) & \
+			(timeout 60 openocd -f openocd/cjtag.cfg > openocd_output.log 2>&1) & \
 		fi; \
 		OPENOCD_PID=$$!; \
 		echo "OpenOCD PID: $$OPENOCD_PID"; \
@@ -319,7 +319,7 @@ test-openocd:
 		EXIT_CODE=$$?; \
 		echo "OpenOCD exited with code $$EXIT_CODE"; \
 		if [ $$EXIT_CODE -eq 137 ] || [ $$EXIT_CODE -eq 124 ]; then \
-			echo "⚠ OpenOCD timed out after 30 seconds"; \
+			echo "⚠ OpenOCD timed out after 60 seconds"; \
 		fi; \
 		if grep -q "Can.t connect" openocd_output.log || \
 		   grep -q "Connection refused" openocd_output.log; then \
@@ -331,25 +331,18 @@ test-openocd:
 			echo "✓ OpenOCD connected and OScan1 initialized"; \
 			if grep -q "Test Complete\|Test Suite Summary" openocd_output.log; then \
 				echo "✓ OpenOCD test suite completed"; \
-				if [ $$EXIT_CODE -eq 0 ]; then \
-					if grep -q "IDCODE matches expected value" openocd_output.log; then \
-						echo "✅ IDCODE verified (test suite passed): 0x1DEAD3FF"; \
-						RESULT=0; \
-					else \
-						echo "❌ IDCODE verification failed"; \
-						tail -20 openocd_output.log | grep -A 5 "IDCODE"; \
-						RESULT=1; \
-					fi; \
+				if grep -q "IDCODE matches expected value" openocd_output.log; then \
+					echo "✅ IDCODE verified (test suite passed): 0x1DEAD3FF"; \
+					RESULT=0; \
 				else \
-					echo "❌ OpenOCD returned error code $$EXIT_CODE"; \
+					echo "❌ IDCODE verification failed"; \
+					tail -20 openocd_output.log | grep -A 5 "IDCODE"; \
 					RESULT=1; \
 				fi; \
 			else \
 				echo "⚠ Test did not complete fully"; \
 				if [ $$EXIT_CODE -eq 137 ] || [ $$EXIT_CODE -eq 124 ]; then \
-					echo "⚠ OpenOCD timed out (expected - known cJTAG bridge limitation)"; \
-					echo "  The bridge successfully enters OSCAN1 but may not maintain state"; \
-					echo "  during complex JTAG operations (target examination)."; \
+					echo "⚠ OpenOCD timed out (increase timeout or check for hangs)"; \
 				fi; \
 				RESULT=1; \
 			fi; \

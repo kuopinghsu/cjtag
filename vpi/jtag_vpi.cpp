@@ -72,7 +72,8 @@ public:
 
     JtagVpi(int port_num = 3333) : port(port_num), connected(false),
                                     cjtag_mode(true), tckc_state(0), tmsc_out(0), free_run_cycles(0),
-                                    waiting_for_tck_edge(false), tck_initial_state(0), wait_counter(0) {
+                                    waiting_for_tck_edge(false),
+                                    tck_initial_state(0), wait_counter(0) {
         server_fd = -1;
         client_fd = -1;
         memset(&pending_response, 0, sizeof(pending_response));
@@ -158,7 +159,7 @@ public:
     bool process_commands(Vtop* top) {
         if (!connected) return true;
 
-        // First, check if we're waiting for a tck_o edge from a previous command
+        // Check if we're waiting for a tck_o edge from a previous command
         if (waiting_for_tck_edge) {
             wait_counter++;
 
@@ -184,13 +185,12 @@ public:
                 printf("[VPI] Timeout after %d ticks, tck_o didn't change, sending response anyway\n", wait_counter);
                 #endif
 
-                // Read current TMSC_O state
+                // Timeout: tck_o didn't change (non-TCK bit slot). Read and respond now.
+                #ifdef VERBOSE
+                printf("[VPI] Timeout after %d ticks, tck_o didn't change, sending response anyway\n", wait_counter);
+                #endif
                 pending_response.buffer_in[0] = top->tmsc_o & 0x01;
-
-                // Send response
                 send(client_fd, &pending_response, sizeof(pending_response), 0);
-
-                // Clear waiting state
                 waiting_for_tck_edge = false;
                 wait_counter = 0;
             }

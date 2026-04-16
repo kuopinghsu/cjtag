@@ -138,9 +138,9 @@ uint32_t read_idcode(TestHarness& tb) {
     tb.send_oscan1_packet(0, 1, nullptr); // TMS=1: RUN_TEST_IDLE -> SELECT_DR
     tb.send_oscan1_packet(0, 0, nullptr); // TMS=0: SELECT_DR -> CAPTURE_DR
 
-    // Enter SHIFT-DR and read first bit
+    // Read 32 bits of IDCODE from SHIFT-DR
     int first_bit = 0;
-    tb.send_oscan1_packet(0, 0, &first_bit); // TMS=0: CAPTURE_DR -> SHIFT-DR, reads bit 0
+    tb.send_oscan1_packet(0, 0, &first_bit); // TMS=0: CAPTURE_DR -> SHIFT_DR, reads bit 0
 
     // Read remaining 31 bits (total 32 bits)
     uint32_t idcode = first_bit;
