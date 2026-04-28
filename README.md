@@ -116,12 +116,9 @@ cjtag/
 ├── openocd/               # OpenOCD integration
 │   ├── cjtag.cfg          # OpenOCD configuration with test suite
 │   └── patched/           # OpenOCD patches for cJTAG support
-│       ├── README.md              # Patch usage and optimization guide
-│       ├── MANUAL_APPLICATION_GUIDE.md
+│       ├── README.md              # Patch usage and application guide
 │       ├── PATCH_SUMMARY.md
-│       ├── 001-jtag_vpi-cjtag-support.patch
-│       ├── 002-oscan1-new-file.txt
-│       └── 003-oscan1-header-new-file.txt
+│       └── 001-jtag_vpi-cjtag-support.patch
 ├── build/                 # Build artifacts (generated, gitignored)
 │   └── Vtop               # Verilator compiled simulation
 ├── Makefile               # Build system with test targets
@@ -433,8 +430,6 @@ To enable cJTAG support in OpenOCD, apply the patches in `openocd/patched/`:
 ```bash
 cd ~/openocd
 patch -p1 < /path/to/cjtag/openocd/patched/001-jtag_vpi-cjtag-support.patch
-cp /path/to/cjtag/openocd/patched/002-oscan1-new-file.txt src/jtag/drivers/oscan1.c
-cp /path/to/cjtag/openocd/patched/003-oscan1-header-new-file.txt src/jtag/drivers/oscan1.h
 ./configure --enable-jtag_vpi
 make -j4
 sudo make install

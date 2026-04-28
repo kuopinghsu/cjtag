@@ -6,16 +6,22 @@ This patch enables OpenOCD's jtag_vpi driver to communicate with cJTAG (IEEE 114
 ## Files Modified
 
 ### 1. `001-jtag_vpi-cjtag-support.patch`
-Main patch for OpenOCD's jtag_vpi driver to add cJTAG/OScan1 support.
+Unified patch for OpenOCD adding complete cJTAG/OScan1 support. Applies all changes in one step.
 
-**Key Changes:**
+**Changes to `jtag_vpi.c`:**
 - Added `CMD_OSCAN1_RAW` (0x5) VPI command for sending raw TCKC/TMSC signal pairs
 - Added `enable_cjtag` configuration command to enable cJTAG mode
 - Integrated OScan1 protocol initialization during driver startup
 - Redirected TMS sequences and data shifts through OScan1 encoding when in cJTAG mode
-- Added functions:
+- Added two-wire communication helpers:
   - `jtag_vpi_send_tckc_tmsc()` - Send raw TCKC/TMSC pairs to VPI server
   - `jtag_vpi_receive_tmsc()` - Read TDO data from TMSC line
+- Added inline OScan1 protocol functions:
+  - `oscan1_init()` - Sends escape sequence, OAC, and JSCAN commands
+  - `oscan1_sf0_encode()` - 4-phase SF0 packet encoder/decoder
+  - `oscan1_send_oac()` - Online Activation Code sender
+  - `oscan1_send_jscan_cmd()` - JSCAN control command sender
+  - `oscan1_set_scanning_format()` - Scanning format selector (SF0 implemented)
 
 **Usage in OpenOCD config:**
 ```tcl
@@ -23,48 +29,6 @@ adapter driver jtag_vpi
 jtag_vpi set_port 3333
 jtag_vpi enable_cjtag on
 ```
-
-### 2. `002-oscan1-new-file.txt`
-New source file `src/jtag/drivers/oscan1.c` implementing the OScan1 protocol layer.
-
-**Key Components:**
-
-#### Initialization Sequence
-```c
-int oscan1_init(void)
-```
-1. Sends escape sequence (6 TMSC toggles while TCKC high)
-2. Sends 12-bit Activation Packet (OAC + EC + CP):
-   - OAC (Online Activation Code): 4 bits = 1100 (LSB first)
-   - EC (Extension Code): 4 bits = 1000 (LSB first)
-   - CP (Check Packet): 4 bits, calculated as CP[i] = OAC[i] ⊕ EC[i]
-3. Sends JSCAN_OSCAN_ON command to enable OScan1 mode
-4. Sends JSCAN_SELECT to select the device
-5. Sends JSCAN_SF_SELECT to choose Scanning Format 0
-
-#### OScan1 Packet Encoding
-```c
-int oscan1_sf0_encode(uint8_t tms, uint8_t tdi, uint8_t *tdo)
-```
-Implements 4-phase OScan1 SF0 (Scanning Format 0) encoding:
-- **Phase 0**: TCKC=0, TMSC=CP (CP=0 for data packets)
-- **Phase 1**: TCKC=1, TMSC=CP
-- **Phase 2**: TCKC=1, TMSC=TMS/TDI (data bit)
-- **Phase 3**: TCKC=0, TMSC=TMS/TDI (samples TDO from TMSC)
-
-#### Functions Provided
-- `oscan1_init()` - Initialize OScan1 protocol
-- `oscan1_reset()` - Reset OScan1 state
-- `oscan1_sf0_encode()` - Encode JTAG bits to OScan1 SF0 format
-- `oscan1_send_oac()` - Send Online Activation Code
-- `oscan1_send_jscan_cmd()` - Send JSCAN control commands
-- `oscan1_set_scanning_format()` - Select scanning format (SF0-SF3)
-- `oscan1_enable_crc()` - Enable/disable CRC-8 checking
-- `oscan1_enable_parity()` - Enable/disable parity checking
-- `oscan1_calc_crc8()` - Calculate CRC-8 for packets
-
-### 3. `003-oscan1-header-new-file.txt`
-Header file `src/jtag/drivers/oscan1.h` with function prototypes and constants.
 
 ## VPI Server Implementation
 
@@ -154,10 +118,6 @@ jtag_vpi enable_cjtag on
 
 # Set scanning format (0-3)
 jtag_vpi scanning_format 0
-
-# Enable error detection
-jtag_vpi enable_crc on
-jtag_vpi enable_parity off
 ```
 
 ## Compatibility
@@ -172,8 +132,6 @@ jtag_vpi enable_parity off
 
 ### Known Limitations
 - SF1, SF2, SF3 formats not yet implemented
-- CRC-8 calculation present but not validated
-- Parity checking defined but not enforced
 - OSCAN1→OFFLINE escape sequences not supported (use ntrst instead)
 
 ## Debugging
@@ -202,13 +160,12 @@ gtkwave cjtag.fst
 
 ## Integration Steps
 
-1. **Apply patches to OpenOCD:**
+1. **Apply the unified patch to OpenOCD:**
    ```bash
    cd /path/to/openocd
    patch -p1 < 001-jtag_vpi-cjtag-support.patch
-   cp 002-oscan1-new-file.txt src/jtag/drivers/oscan1.c
-   cp 003-oscan1-header-new-file.txt src/jtag/drivers/oscan1.h
    ```
+   This modifies `jtag_vpi.c` only; all OScan1 functions are inlined within that file.
 
 2. **Rebuild OpenOCD:**
    ```bash

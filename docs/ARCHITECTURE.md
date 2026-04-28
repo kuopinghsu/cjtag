@@ -346,25 +346,25 @@ Each packet contains 3 bits transmitted over 3 TCKC cycles. TCK pulses on TCKC p
        │  TCP Connection :3333             │
        ├──────────────────────────────────►│
        │                                   │
-       │  CMD_CJTAG_TCKC (0x10) + state    │
-       ├──────────────────────────────────►│
-       │                                   │
-       │  CMD_CJTAG_WRITE (0x11) + data    │
-       ├──────────────────────────────────►│
-       │                                   │
-       │  CMD_CJTAG_READ (0x12)            │
-       ├──────────────────────────────────►│
-       │                                   │
-       │  ◄─ TMSC data byte                │
-       │◄──────────────────────────────────┤
-       │                                   │
        │  CMD_RESET (0x00)                 │
        ├──────────────────────────────────►│
        │                                   │
-       │  ◄─ Response                      │
+       │  CMD_TMS_SEQ (0x01) + bits        │
+       ├──────────────────────────────────►│
+       │                                   │
+       │  CMD_SCAN_CHAIN (0x02) + data     │
+       ├──────────────────────────────────►│
+       │                                   │
+       │  CMD_OSCAN1_RAW (0x05)            │
+       │  byte: bit0=TCKC, bit1=TMSC       │
+       ├──────────────────────────────────►│
+       │                                   │
+       │  ◄─ TMSC output byte (TDO)        │
        │◄──────────────────────────────────┤
        │                                   │
 ```
+
+**CMD_OSCAN1_RAW (0x5)** is used for all cJTAG mode communication. Each call drives one TCKC/TMSC signal pair and returns the current TMSC output (TDO value).
 
 ## Timing Relationships
 
@@ -747,9 +747,7 @@ CP[3] = OAC[3] ⊕ EC[3] = 1 ⊕ 1 = 0
 
 ### Test Suite Overview
 
-The project includes three comprehensive test suites:
-
-1. **Verilator Unit/Integration Tests**: 131 tests in `tb/test_cjtag.cpp`
+The project includes three comprehensive test suites:1. **Verilator Unit/Integration Tests**: 131 tests in `tb/test_cjtag.cpp`
 2. **OpenOCD Integration Tests**: 8 tests via VPI interface
 3. **VPI IDCODE Test**: Direct IDCODE verification
 
@@ -846,7 +844,7 @@ Key signals to observe in `cjtag.fst`:
 | `make` or `make build` | Build Verilator simulation |
 | `make test` | Run 131 Verilator automated tests |
 | `make test-idcode` | Run VPI IDCODE verification test |
-| `make test-openocd` | Run 8 OpenOCD integration tests |
+| `make test-openocd` | Run 18-step OpenOCD integration test |
 | `make test-trace` | Run tests with waveform generation |
 | `make run` | Run simulation (no waveform) |
 | `make sim` | Run simulation with FST waveform |
@@ -912,20 +910,15 @@ The simulation provides a VPI server on port 3333 (configurable) for OpenOCD con
        │  TCP Connection :3333             │
        ├──────────────────────────────────►│
        │                                   │
-       │  CMD_CJTAG_TCKC (0x10) + state    │
-       ├──────────────────────────────────►│
-       │                                   │
-       │  CMD_CJTAG_WRITE (0x11) + data    │
-       ├──────────────────────────────────►│
-       │                                   │
-       │  CMD_CJTAG_READ (0x12)            │
-       ├──────────────────────────────────►│
-       │                                   │
-       │  ◄─ TMSC data byte                │
-       │◄──────────────────────────────────┤
-       │                                   │
        │  CMD_RESET (0x00)                 │
        ├──────────────────────────────────►│
+       │                                   │
+       │  CMD_OSCAN1_RAW (0x05)            │
+       │  byte: bit0=TCKC, bit1=TMSC       │
+       ├──────────────────────────────────►│
+       │                                   │
+       │  ◄─ TMSC output byte (TDO)        │
+       │◄──────────────────────────────────┤
        │                                   │
 ```
 

@@ -289,7 +289,7 @@ Physical debug connectors often retain standard 14-pin or 20-pin headers even fo
 1. **Power-up**: Adapter in OFFLINE state
 2. **Activate**: Send 6-toggle escape + 12-bit activation packet
 3. **Debug**: Perform JTAG operations via Oscan1 scan packets
-4. **Deactivate**: Assert nTRST or power cycle (escape not supported)
+4. **Deactivate**: Send 4-5 TMSC toggles (deselection) or 8+ TMSC toggles (reset) while TCKC high, or assert nTRST
 
 ---
 

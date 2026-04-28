@@ -15,7 +15,7 @@ This directory contains comprehensive documentation for the cJTAG Bridge project
 ### 🧪 Testing & Verification
 **→ [TEST_GUIDE.md](TEST_GUIDE.md)**
 - **131 Verilator tests** (100% passing ✅)
-- **8 OpenOCD integration tests** (100% passing ✅)
+- **18-step OpenOCD integration test** (100% passing ✅)
 - **VPI IDCODE verification test** (passing ✅)
 - Complete test catalog organized in 13 categories
 - Coverage analysis (protocol, timing, TAP, error recovery, RISC-V debug)
@@ -62,7 +62,7 @@ This directory contains comprehensive documentation for the cJTAG Bridge project
 - OAC validation (Online Activation Code)
 - OpenOCD VPI interface integration
 - **131 Verilator automated tests**
-- **8 OpenOCD integration tests**
+- **18-step OpenOCD integration test**
 - **VPI IDCODE verification test**
 - Complete protocol validation
 - Error recovery and robustness testing
@@ -123,7 +123,7 @@ Follow [TEST_GUIDE.md](TEST_GUIDE.md) to validate:
 ```bash
 make test              # 131 Verilator tests
 make test-idcode       # VPI IDCODE test
-make test-openocd      # 8 OpenOCD integration tests
+make test-openocd      # 18-step OpenOCD integration test
 ```
 Expected: **131/131 Verilator tests passed ✅**
 Expected: **8/8 OpenOCD tests passed ✅**
