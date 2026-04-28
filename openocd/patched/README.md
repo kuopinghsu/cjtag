@@ -133,7 +133,7 @@ OpenOCD connectivity: PASS
 
 ### VPI Connection Refused
 - Ensure simulation is running: `make vpi-sim`
-- Check port 3333 is available: `lsof -i :3333`
+- Check port 5555 is available: `lsof -i :5555`
 - Increase VPI server connection timeout in test script
 
 ## References

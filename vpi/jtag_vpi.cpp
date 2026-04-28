@@ -70,7 +70,7 @@ public:
     int wait_counter;  // Counter for how many ticks we've waited
     static const int MAX_WAIT_TICKS = 100;  // Maximum ticks to wait for tck_o edge
 
-    JtagVpi(int port_num = 3333) : port(port_num), connected(false),
+    JtagVpi(int port_num = 5555) : port(port_num), connected(false),
                                     cjtag_mode(true), tckc_state(0), tmsc_out(0), free_run_cycles(0),
                                     waiting_for_tck_edge(false),
                                     tck_initial_state(0), wait_counter(0) {
@@ -373,7 +373,10 @@ extern "C" {
     void jtag_vpi_init(int port) {
         if (g_vpi == nullptr) {
             g_vpi = new JtagVpi(port);
-            g_vpi->init_server();
+            if (!g_vpi->init_server()) {
+                fprintf(stderr, "VPI: Fatal: cannot bind to port %d. Exiting.\n", port);
+                exit(1);
+            }
         }
     }
 

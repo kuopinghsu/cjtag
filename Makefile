@@ -55,7 +55,7 @@ TEST_SOURCE := $(TB_DIR)/test_cjtag.cpp
 IDCODE_TEST_SOURCE := $(TB_DIR)/test_idcode.cpp
 
 # VPI Port
-VPI_PORT := 3333
+VPI_PORT := 5555
 
 # Waveform control
 WAVE ?= 0
@@ -101,7 +101,7 @@ help:
 	@echo "Environment Variables:"
 	@echo "  WAVE=1         - Enable FST waveform dump"
 	@echo "  VERBOSE=1      - Show detailed build output and warnings"
-	@echo "  VPI_PORT=3333  - VPI server port (default: 3333)"
+	@echo "  VPI_PORT=5555  - VPI server port (default: 5555)"
 	@echo "  VERILATOR_THREADS=2  - Parallel threads for simulation (default: 2)"
 	@echo "  OPT_LEVEL=3    - Optimization level 0-3 (default: 3)"
 	@echo ""

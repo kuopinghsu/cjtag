@@ -80,7 +80,7 @@ int main(int argc, char** argv) {
     signal(SIGTERM, signal_handler);
 
     // Initialize VPI server
-    int vpi_port = 3333;
+    int vpi_port = 5555;
     if (const char* port_env = getenv("VPI_PORT")) {
         vpi_port = atoi(port_env);
     }

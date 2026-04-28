@@ -221,7 +221,7 @@ This runs the simulation with FST waveform tracing enabled. Waveform file will b
 make WAVE=1 vpi
 ```
 
-This starts the simulation in VPI server mode, listening on port 3333 for OpenOCD connections.
+This starts the simulation in VPI server mode, listening on port 5555 for OpenOCD connections.
 
 ## Usage Guide
 
@@ -263,7 +263,7 @@ VPI_PORT=5555 make vpi
 3. **Connect with GDB** (in another terminal):
    ```bash
    riscv64-unknown-elf-gdb
-   (gdb) target remote localhost:3334
+   (gdb) target remote localhost:5556
    ```
 
 ### Makefile Targets
@@ -290,7 +290,7 @@ Targets:
 Environment Variables:
   WAVE=1         - Enable FST waveform dump
   VERBOSE=1      - Show detailed build output and warnings
-  VPI_PORT=3333  - VPI server port (default: 3333)
+  VPI_PORT=5555  - VPI server port (default: 5555)
   VERILATOR_THREADS=2  - Parallel threads for simulation (default: 2)
   OPT_LEVEL=2    - Optimization level 0-3 (default: 2)
 
@@ -358,7 +358,7 @@ input  logic  ntrst_i      // Reset
 **Purpose**: VPI interface for OpenOCD communication
 
 **Key Features**:
-- TCP/IP server (default port 3333)
+- TCP/IP server (default port 5555)
 - cJTAG protocol commands
 - Non-blocking socket I/O
 - Command processing for TCKC/TMSC
@@ -417,7 +417,7 @@ The provided `openocd/cjtag.cfg` configures OpenOCD for cJTAG mode:
 
 ```tcl
 adapter driver jtag_vpi
-jtag_vpi set_port 3333
+jtag_vpi set_port 5555
 jtag_vpi enable_cjtag on
 transport select jtag
 jtag newtap riscv cpu -irlen 5 -expected-id 0x1dead3ff
@@ -453,7 +453,7 @@ sudo apt-get install verilator
 ### Simulation Issues
 
 **Problem**: VPI connection refused
-- Ensure no other process is using port 3333
+- Ensure no other process is using port 5555
 - Try custom port: `VPI_PORT=5555 make vpi`
 
 **Problem**: No waveform generated
@@ -464,7 +464,7 @@ sudo apt-get install verilator
 
 **Problem**: "Error: JTAG scan chain interrogation failed"
 - Check that simulation is running
-- Verify VPI port matches (default: 3333)
+- Verify VPI port matches (default: 5555)
 - Ensure cJTAG patches are applied to OpenOCD
 
 **Problem**: OpenOCD doesn't recognize cJTAG commands
@@ -720,7 +720,7 @@ Testing OpenOCD VPI Connection
 
 The OpenOCD test suite validates:
 
-1. **VPI Connectivity**: TCP socket connection on port 3333
+1. **VPI Connectivity**: TCP socket connection on port 5555
 2. **cJTAG Protocol**: OScan1 activation and packet handling
 3. **State Machine**: TAP controller state transitions
 4. **Data Integrity**: Correct data transmission/reception
@@ -784,7 +784,7 @@ Test Suite Summary
 **Problem**: VPI connection refused
 ```bash
 # Check if port is in use
-lsof -i :3333
+lsof -i :5555
 
 # Try different port
 VPI_PORT=5555 make test-openocd
@@ -811,7 +811,7 @@ The test configuration (`openocd/cjtag.cfg`) includes:
 ```tcl
 # VPI adapter setup
 adapter driver jtag_vpi
-jtag_vpi set_port 3333
+jtag_vpi set_port 5555
 
 # cJTAG mode enable
 jtag_vpi enable_cjtag on
@@ -841,7 +841,7 @@ run_tests
 
 3. **Expected output**:
    ```
-   Info : accepting 'jtag_vpi' connection from 3333
+   Info : accepting 'jtag_vpi' connection from 5555
    Info : cJTAG mode enabled
    Info : This adapter doesn't support configurable speed
    Info : JTAG tap: riscv.cpu tap/device found: 0x1dead3ff

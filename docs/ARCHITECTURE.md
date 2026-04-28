@@ -18,7 +18,7 @@ The cJTAG bridge implements IEEE 1149.7 (Compact JTAG) Class T4, converting a 2-
 │  │              │         │              │        │              │  │
 │  │     GDB      │◄───────►│   OpenOCD    │◄──────►│  Simulation  │  │
 │  │              │  TCP    │              │  VPI   │  (Verilator) │  │
-│  │              │ :3334   │              │ :3333  │              │  │
+│  │              │ :5556   │              │ :5555  │              │  │
 │  └──────────────┘         └──────────────┘        └──────┬───────┘  │
 │                                                          │          │
 └──────────────────────────────────────────────────────────┼──────────┘
@@ -343,7 +343,7 @@ Each packet contains 3 bits transmitted over 3 TCKC cycles. TCK pulses on TCKC p
 │  (Client)    │                    │   (Server)   │
 └──────┬───────┘                    └──────┬───────┘
        │                                   │
-       │  TCP Connection :3333             │
+       │  TCP Connection :5555             │
        ├──────────────────────────────────►│
        │                                   │
        │  CMD_RESET (0x00)                 │
@@ -860,7 +860,7 @@ Key signals to observe in `cjtag.fst`:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `WAVE` | 0 | Enable FST waveform dump (set to 1) |
-| `VPI_PORT` | 3333 | VPI server port |
+| `VPI_PORT` | 5555 | VPI server port |
 | `VERBOSE` | 0 | Enable verbose debug output |
 
 ### Build Process
@@ -899,7 +899,7 @@ User: make WAVE=1
 
 ### VPI Protocol
 
-The simulation provides a VPI server on port 3333 (configurable) for OpenOCD connection:
+The simulation provides a VPI server on port 5555 (configurable) for OpenOCD connection:
 
 ```
 ┌──────────────┐                    ┌──────────────┐
@@ -907,7 +907,7 @@ The simulation provides a VPI server on port 3333 (configurable) for OpenOCD con
 │  (Client)    │                    │   (Server)   │
 └──────┬───────┘                    └──────┬───────┘
        │                                   │
-       │  TCP Connection :3333             │
+       │  TCP Connection :5555             │
        ├──────────────────────────────────►│
        │                                   │
        │  CMD_RESET (0x00)                 │
@@ -931,7 +931,7 @@ make WAVE=1 vpi
 
 Output:
 ```
-VPI: Server listening on port 3333 (cJTAG mode)
+VPI: Server listening on port 5555 (cJTAG mode)
 Waiting for OpenOCD connection...
 ```
 
@@ -942,7 +942,7 @@ openocd -f openocd/cjtag.cfg
 
 Expected:
 ```
-Info : accepting 'jtag_vpi' connection from 3333
+Info : accepting 'jtag_vpi' connection from 5555
 Info : cJTAG mode enabled
 Info : JTAG tap: riscv.cpu tap/device found: 0x1dead3ff
 ```

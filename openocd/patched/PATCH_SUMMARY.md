@@ -26,7 +26,7 @@ Unified patch for OpenOCD adding complete cJTAG/OScan1 support. Applies all chan
 **Usage in OpenOCD config:**
 ```tcl
 adapter driver jtag_vpi
-jtag_vpi set_port 3333
+jtag_vpi set_port 5555
 jtag_vpi enable_cjtag on
 ```
 
@@ -143,7 +143,7 @@ debug_level 3
 
 ### Check VPI Connection
 ```
-Info : jtag_vpi: Connection to 127.0.0.1 : 3333 successful
+Info : jtag_vpi: Connection to 127.0.0.1 : 5555 successful
 Info : jtag_vpi: cJTAG mode enabled, initializing OScan1 protocol
 Info : Initializing OScan1 protocol...
 Info : OScan1 protocol initialized successfully
@@ -179,7 +179,7 @@ gtkwave cjtag.fst
    ```tcl
    # cjtag.cfg
    adapter driver jtag_vpi
-   jtag_vpi set_port 3333
+   jtag_vpi set_port 5555
    jtag_vpi enable_cjtag on
 
    transport select jtag
