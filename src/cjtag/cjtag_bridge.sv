@@ -85,8 +85,9 @@ module cjtag_bridge (
     logic        tckc_is_high;          // TCKC currently held high
     state_t      return_state;          // State to evaluate after escape sequence
 
-    logic [10:0] activation_shift;      // Activation packet shift register (11 bits, 12th bit in tmsc_s)
+    logic [10:0] activation_shift;      // Activation packet shift register (11 bits, 12th bit in activation_pending)
     logic [3:0]  activation_count;      // Bit counter for activation packet (0-11)
+    logic        activation_pending;    // TMSC captured on TCKC rising edge for activation packet
     logic [1:0]  bit_pos;               // Position in 3-bit OScan1 packet
     logic        tmsc_sampled;          // TMSC sampled on TCKC negedge
 
@@ -186,12 +187,13 @@ module cjtag_bridge (
     // =========================================================================
     always_ff @(posedge clk_i or negedge ntrst_i) begin
         if (!ntrst_i) begin
-            state           <= ST_OFFLINE;
-            return_state    <= ST_OFFLINE;
-            activation_shift <= 11'd0;
-            activation_count <= 4'd0;
-            bit_pos         <= 2'd0;
-            tmsc_sampled    <= 1'b0;
+            state             <= ST_OFFLINE;
+            return_state      <= ST_OFFLINE;
+            activation_shift  <= 11'd0;
+            activation_count  <= 4'd0;
+            activation_pending <= 1'b0;
+            bit_pos           <= 2'd0;
+            tmsc_sampled      <= 1'b0;
         end else begin
             case (state)
                 // =============================================================
@@ -271,8 +273,14 @@ module cjtag_bridge (
                 end
 
                 // =============================================================
-                // ONLINE_ACT: Receive OAC (4 bits on TCKC edges)
-                // OAC = 0xB (1011 binary, LSB first: 1,1,0,1)
+                // ONLINE_ACT: Receive 12-bit activation packet on TCKC edges
+                // IEEE 1149.7: host drives TMSC at the TCKC rising edge.
+                // We capture TMSC into activation_pending on the rising edge,
+                // then shift it into activation_shift and validate on the
+                // falling edge.  Keeping the state transition on the falling
+                // edge (same as the original design) prevents the last falling
+                // edge of the OAC sequence from being misinterpreted as the
+                // first OScan1 data beat.
                 // =============================================================
                 ST_ONLINE_ACT: begin
                     `ifdef VERBOSE
@@ -283,45 +291,61 @@ module cjtag_bridge (
                     end
                     `endif
 
-                    // Check for escape sequence (takes priority)
+                    // Check for escape sequence on TCKC falling edge (takes priority)
                     if (tckc_negedge && tmsc_toggle_count >= 5'd4) begin
                         return_state <= ST_ONLINE_ACT;
                         state <= ST_ESCAPE;
-                        activation_shift <= 11'd0;
-                        activation_count <= 4'd0;
+                        activation_shift   <= 11'd0;
+                        activation_count   <= 4'd0;
+                        activation_pending <= 1'b0;
 
                         `ifdef VERBOSE
                         $display("[%0t] ONLINE_ACT -> ESCAPE (toggles=%0d)",
                                  $time, tmsc_toggle_count);
                         `endif
                     end
-                    // Sample TMSC on TCKC falling edge (normal activation packet reception)
-                    else if (tckc_negedge) begin
-                        activation_shift <= {tmsc_s, activation_shift[10:1]};
+                    // Capture TMSC on TCKC rising edge per IEEE 1149.7: the host
+                    // drives each activation-packet bit at the TCKC rising edge.
+                    // Both signals pass through the same 2-stage synchronizer, so
+                    // tmsc_s is already stable when tckc_posedge is asserted.
+                    else if (tckc_posedge) begin
+                        activation_pending <= tmsc_s;
 
                         `ifdef VERBOSE
-                        $display("[%0t] ONLINE_ACT: bit %0d, tmsc_s=%b",
+                        $display("[%0t] ONLINE_ACT: captured bit %0d = %b on posedge",
                                  $time, activation_count, tmsc_s);
+                        `endif
+                    end
+                    // On TCKC falling edge: shift the captured bit into the shift
+                    // register and advance the counter / validate the packet.
+                    // Keeping the state transition here ensures the falling edge of
+                    // the 12th OAC bit is consumed in ONLINE_ACT, not OSCAN1.
+                    else if (tckc_negedge) begin
+                        activation_shift <= {activation_pending, activation_shift[10:1]};
+
+                        `ifdef VERBOSE
+                        $display("[%0t] ONLINE_ACT: shifted bit %0d, activation_pending=%b",
+                                 $time, activation_count, activation_pending);
                         `endif
 
                         // After 12 bits (count 0-11), check the full activation packet
                         // Format: OAC (4 bits) + EC (4 bits) + CP (4 bits) - all LSB first
                         // Expected: OAC=1100, EC=1000, CP=calculated parity
                         if (activation_count == 4'd11) begin
-                            // Combine current bit with previous 11 bits and validate inline
-                            // Packet: {tmsc_s, activation_shift[10:0]}
+                            // Combine captured 12th bit with previous 11 bits and validate
+                            // Packet: {activation_pending, activation_shift[10:0]}
                             // OAC: bits [3:0], EC: bits [7:4], CP: bits [11:8]
 
                             `ifdef VERBOSE
                             $display("[%0t] Checking activation packet:", $time);
-                            $display("    Full packet: %b", {tmsc_s, activation_shift[10:0]});
+                            $display("    Full packet: %b", {activation_pending, activation_shift[10:0]});
                             $display("    OAC=%b (expected=1100), EC=%b (expected=1000), CP=%b",
-                                     {tmsc_s, activation_shift[10:0]}[3:0],
-                                     {tmsc_s, activation_shift[10:0]}[7:4],
-                                     {tmsc_s, activation_shift[10:0]}[11:8]);
+                                     {activation_pending, activation_shift[10:0]}[3:0],
+                                     {activation_pending, activation_shift[10:0]}[7:4],
+                                     {activation_pending, activation_shift[10:0]}[11:8]);
                             $display("    Calculated CP=%b, CP valid=%b",
-                                     {tmsc_s, activation_shift[10:0]}[3:0] ^ {tmsc_s, activation_shift[10:0]}[7:4],
-                                     {tmsc_s, activation_shift[10:0]}[11:8] == ({tmsc_s, activation_shift[10:0]}[3:0] ^ {tmsc_s, activation_shift[10:0]}[7:4]));
+                                     {activation_pending, activation_shift[10:0]}[3:0] ^ {activation_pending, activation_shift[10:0]}[7:4],
+                                     {activation_pending, activation_shift[10:0]}[11:8] == ({activation_pending, activation_shift[10:0]}[3:0] ^ {activation_pending, activation_shift[10:0]}[7:4]));
                             `endif
 
                             // Validate: OAC=1100, EC=1000, CP matches calculated value
@@ -330,7 +354,7 @@ module cjtag_bridge (
                             // CP check: bits [11:8] == (bits[3:0] XOR bits[7:4])
                             if (activation_shift[3:0] == 4'b1100 &&
                                 activation_shift[7:4] == 4'b1000 &&
-                                {tmsc_s, activation_shift[10:8]} == (activation_shift[3:0] ^ activation_shift[7:4])) begin
+                                {activation_pending, activation_shift[10:8]} == (activation_shift[3:0] ^ activation_shift[7:4])) begin
                                 state <= ST_OSCAN1;
                                 bit_pos <= 2'd0;
 
@@ -341,15 +365,15 @@ module cjtag_bridge (
                                 state <= ST_OFFLINE;
 
                                 `ifdef VERBOSE
-                                if ({tmsc_s, activation_shift[10:0]}[11:8] != ({tmsc_s, activation_shift[10:0]}[3:0] ^ {tmsc_s, activation_shift[10:0]}[7:4])) begin
+                                if ({activation_pending, activation_shift[10:0]}[11:8] != ({activation_pending, activation_shift[10:0]}[3:0] ^ {activation_pending, activation_shift[10:0]}[7:4])) begin
                                     $display("[%0t] ONLINE_ACT -> OFFLINE (CP parity error: rx=%b calc=%b)",
                                              $time,
-                                             {tmsc_s, activation_shift[10:0]}[11:8],
-                                             {tmsc_s, activation_shift[10:0]}[3:0] ^ {tmsc_s, activation_shift[10:0]}[7:4]);
-                                end else if ({tmsc_s, activation_shift[10:0]}[3:0] != 4'b1100) begin
-                                    $display("[%0t] ONLINE_ACT -> OFFLINE (invalid OAC: %b)", $time, {tmsc_s, activation_shift[10:0]}[3:0]);
+                                             {activation_pending, activation_shift[10:0]}[11:8],
+                                             {activation_pending, activation_shift[10:0]}[3:0] ^ {activation_pending, activation_shift[10:0]}[7:4]);
+                                end else if ({activation_pending, activation_shift[10:0]}[3:0] != 4'b1100) begin
+                                    $display("[%0t] ONLINE_ACT -> OFFLINE (invalid OAC: %b)", $time, {activation_pending, activation_shift[10:0]}[3:0]);
                                 end else begin
-                                    $display("[%0t] ONLINE_ACT -> OFFLINE (invalid EC: %b)", $time, {tmsc_s, activation_shift[10:0]}[7:4]);
+                                    $display("[%0t] ONLINE_ACT -> OFFLINE (invalid EC: %b)", $time, {activation_pending, activation_shift[10:0]}[7:4]);
                                 end
                                 `endif
                             end
