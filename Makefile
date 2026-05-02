@@ -150,7 +150,7 @@ $(VERILATOR_TEST): $(RTL_SOURCES) $(TEST_SOURCE)
 		--Mdir $(BUILD_DIR)/test_obj \
 		-o ../Vtest_$(TOP_MODULE) \
 		$(RTL_SOURCES) \
-		$(TEST_SOURCE)
+		$(abspath $(TEST_SOURCE))
 	@echo ""
 	@echo "Test build complete: $(VERILATOR_TEST)"
 	@echo "=========================================="

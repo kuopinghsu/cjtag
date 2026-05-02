@@ -114,7 +114,11 @@ public:
         // System clock runs continuously in background
         // TCKC edge timing: hold for ~10 system clock cycles per edge
 
-        // Rising edge: TMSC changes on rising edge of TCKC
+        // Rising edge: TMSC is driven by the host at the TCKC rising edge.
+        // Both TCKC and TMSC pass through the same 2-stage synchronizer, so
+        // tmsc_s is already stable when tckc_posedge is detected.
+        // Activation packet (ONLINE_ACT): bridge samples TMSC on rising edge.
+        // OScan1 data (OSCAN1): bridge samples TMSC on falling edge.
         dut->tckc_i = 1;
         dut->tmsc_i = tmsc_val;
 
@@ -123,7 +127,7 @@ public:
             tick();
         }
 
-        // Falling edge: bridge samples TMSC here
+        // Falling edge
         dut->tckc_i = 0;
 
         // Run system clock for a few more cycles
