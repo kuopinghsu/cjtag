@@ -68,12 +68,16 @@ public:
     uint8_t tck_initial_state;
     struct vpi_cmd pending_response;
     int wait_counter;  // Counter for how many ticks we've waited
+    int post_edge_settle; // Cycles to wait after rising edge before reading tmsc_o
     static const int MAX_WAIT_TICKS = 100;  // Maximum ticks to wait for tck_o edge
+    // After TCK rises, tdo_sampled updates on the NEXT clk_i cycle via
+    // "if (tck_int) tdo_sampled <= tdo_i". Wait this many extra cycles.
+    static const int TCK_RISE_SETTLE_TICKS = 4;
 
     JtagVpi(int port_num = 5555) : port(port_num), connected(false),
                                     cjtag_mode(true), tckc_state(0), tmsc_out(0), free_run_cycles(0),
                                     waiting_for_tck_edge(false),
-                                    tck_initial_state(0), wait_counter(0) {
+                                    tck_initial_state(0), wait_counter(0), post_edge_settle(0) {
         server_fd = -1;
         client_fd = -1;
         memset(&pending_response, 0, sizeof(pending_response));
@@ -163,22 +167,41 @@ public:
         if (waiting_for_tck_edge) {
             wait_counter++;
 
+            // Phase 2: post-rising-edge settle (let tdo_sampled update)
+            if (post_edge_settle > 0) {
+                post_edge_settle--;
+                if (post_edge_settle == 0) {
+                    // Settle complete: read tmsc_o (tdo_sampled now valid) and respond
+                    #ifdef VERBOSE
+                    printf("[VPI] Post-rise settle complete, tmsc_o=%d\n", top->tmsc_o & 0x01);
+                    #endif
+                    pending_response.buffer_in[0] = top->tmsc_o & 0x01;
+                    send(client_fd, &pending_response, sizeof(pending_response), 0);
+                    waiting_for_tck_edge = false;
+                    wait_counter = 0;
+                }
+                return true;
+            }
+
             if (top->tck_o != tck_initial_state) {
-                // tck_o edge detected! Now read TMSC_O and send response
-                #ifdef VERBOSE
-                printf("[VPI] tck_o edge detected after %d ticks (was %d, now %d), sending response\n",
-                       wait_counter, tck_initial_state, top->tck_o);
-                #endif
-
-                // Read TMSC_O after JTAG clock edge (real hardware timing)
-                pending_response.buffer_in[0] = top->tmsc_o & 0x01;
-
-                // Send response
-                send(client_fd, &pending_response, sizeof(pending_response), 0);
-
-                // Clear waiting state
-                waiting_for_tck_edge = false;
-                wait_counter = 0;
+                if (top->tck_o == 1) {
+                    // Rising edge detected: enter settle phase so tdo_sampled can update
+                    #ifdef VERBOSE
+                    printf("[VPI] TCK rising edge after %d ticks, settling %d more cycles\n",
+                           wait_counter, TCK_RISE_SETTLE_TICKS);
+                    #endif
+                    post_edge_settle = TCK_RISE_SETTLE_TICKS;
+                } else {
+                    // Falling edge: read and respond immediately
+                    #ifdef VERBOSE
+                    printf("[VPI] tck_o edge detected after %d ticks (was %d, now %d), sending response\n",
+                           wait_counter, tck_initial_state, top->tck_o);
+                    #endif
+                    pending_response.buffer_in[0] = top->tmsc_o & 0x01;
+                    send(client_fd, &pending_response, sizeof(pending_response), 0);
+                    waiting_for_tck_edge = false;
+                    wait_counter = 0;
+                }
             } else if (wait_counter >= MAX_WAIT_TICKS) {
                 // Timeout - send response anyway to avoid hanging OpenOCD
                 #ifdef VERBOSE
@@ -193,6 +216,7 @@ public:
                 send(client_fd, &pending_response, sizeof(pending_response), 0);
                 waiting_for_tck_edge = false;
                 wait_counter = 0;
+                post_edge_settle = 0;
             }
             // Still waiting, return and let testbench continue running clocks
             return true;

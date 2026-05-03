@@ -96,6 +96,7 @@ module cjtag_bridge (
     logic        tdi_int;
     logic        tmsc_oen_int;          // TMSC output enable (registered)
     logic        tdo_sampled;           // TDO sampled when TCK is high
+    logic        tck_rise_req;          // One-cycle pulse: raise TCK next cycle
 
     // =========================================================================
     // Input Synchronizers - 2-stage for metastability protection
@@ -295,8 +296,9 @@ module cjtag_bridge (
                                  $time, tmsc_toggle_count);
                         `endif
                     end
-                    // Sample TMSC on TCKC falling edge (normal activation packet reception)
-                    else if (tckc_negedge) begin
+                    // Sample TMSC on TCKC rising edge (data driven by DTS on falling,
+                    // stable and valid on rising edge per IEEE 1149.7)
+                    else if (tckc_posedge) begin
                         activation_shift <= {tmsc_s, activation_shift[10:1]};
 
                         `ifdef VERBOSE
@@ -384,20 +386,22 @@ module cjtag_bridge (
                                  $time, tmsc_toggle_count);
                         `endif
                     end
-                    // Sample on TCKC falling edge (normal operation)
-                    else if (tckc_negedge) begin
+                    // Sample TMSC on TCKC rising edge.
+                    // DTS drives data on the falling edge; data is stable on the rising
+                    // edge per IEEE 1149.7 "Falling Edge Change / Rising Edge Sample" rule.
+                    else if (tckc_posedge) begin
                         tmsc_sampled <= tmsc_s;
 
                         // Advance to next bit position
                         case (bit_pos)
                             2'd0: bit_pos <= 2'd1;  // nTDI sampled
                             2'd1: bit_pos <= 2'd2;  // TMS sampled
-                            2'd2: bit_pos <= 2'd0;  // TDO sampled (from device)
+                            2'd2: bit_pos <= 2'd0;  // TDO bit slot complete
                             default: bit_pos <= 2'd0;
                         endcase
 
                         `ifdef VERBOSE
-                        $display("[%0t] OSCAN1 negedge: bit_pos=%0d, tmsc_s=%b",
+                        $display("[%0t] OSCAN1 posedge (sample): bit_pos=%0d, tmsc_s=%b",
                                  $time, bit_pos, tmsc_s);
                         `endif
                     end
@@ -420,38 +424,43 @@ module cjtag_bridge (
             tdi_int         <= 1'b0;
             tmsc_oen_int    <= 1'b1;  // Default to input mode
             tdo_sampled     <= 1'b0;
+            tck_rise_req    <= 1'b0;
         end else begin
             case (state)
                 ST_OFFLINE, ST_ONLINE_ACT, ST_ESCAPE: begin
                     // Keep JTAG interface idle
-                    tck_int <= 1'b0;
-                    tms_int <= 1'b1;
-                    tdi_int <= 1'b0;
+                    tck_int      <= 1'b0;
+                    tms_int      <= 1'b1;
+                    tdi_int      <= 1'b0;
                     tmsc_oen_int <= 1'b1;  // Input mode
+                    tck_rise_req <= 1'b0;
                 end
 
                 ST_OSCAN1: begin
-                    // Update outputs based on TCKC edges and bit position
+                    // Update outputs based on TCKC edges and bit position.
+                    //
+                    // Corrected packet timing (per IEEE 1149.7):
+                    //   TCKC negedge (bit_pos=0): DTS drives nTDI on TMSC
+                    //   TCKC posedge (bit_pos=0): TAPC samples nTDI
+                    //   TCKC negedge (bit_pos=1): DTS drives TMS on TMSC
+                    //   TCKC posedge (bit_pos=1): TAPC samples TMS, updates tdi_int
+                    //   TCKC negedge (bit_pos=2): tms_int committed; TCK rise scheduled
+                    //   TCKC negedge + 1 clk cycle: TCK raised (tms_int stable for 1 cycle)
+                    //   TCKC posedge (bit_pos=2): TCK lowered; TMSC switched to output (TDO)
 
-                    // Sample TDO while TCK is high: the TAP registers TDO on negedge TCK,
-                    // so tdo_i is stable and correct throughout the TCK-high period.
-                    // Continuously latching here ensures tdo_sampled is captured and held
-                    // for the probe to read on TMSC during the TDO bit slot.
-                    if (tck_int) begin
-                        tdo_sampled <= tdo_i;
-                    end
-
-                    // On TCKC rising edge - generate TCK pulse and drive TDO
+                    // On TCKC posedge - sample TMSC, update JTAG inputs, present TDO
                     if (tckc_posedge) begin
                         case (bit_pos)
                             2'd0: begin
-                                // Start of new packet - TCK low, prepare for nTDI
+                                // nTDI just sampled in state machine above.
+                                // Lower TCK (end of previous TDO slot), switch back to input.
                                 tck_int <= 1'b0;
                                 tmsc_oen_int <= 1'b1;  // Input mode for nTDI
                             end
 
                             2'd1: begin
-                                // After nTDI sampled - update TDI, prepare for TMS
+                                // nTDI sample is in tmsc_sampled; update tdi_int.
+                                // TMS will be sampled this posedge in state machine above.
                                 tdi_int <= ~tmsc_sampled;
                                 tmsc_oen_int <= 1'b1;  // Input mode for TMS
 
@@ -462,15 +471,15 @@ module cjtag_bridge (
                             end
 
                             2'd2: begin
-                                // After TMS sampled - generate TCK pulse, enable TDO output.
-                                // tdo_sampled will be updated once tck_int is high (above).
-                                tms_int <= tmsc_sampled;
-                                tck_int <= 1'b1;       // Generate TCK pulse
-                                tmsc_oen_int <= 1'b0;  // Output mode for TDO
+                                // Lower TCK on posedge (it was raised via tck_rise_req).
+                                // tms_int was already set on the preceding negedge.
+                                // tdo_sampled is valid (latched while tck_int=1).
+                                tck_int      <= 1'b0;  // Lower TCK
+                                tmsc_oen_int <= 1'b0;  // Output mode: present TDO on TMSC
 
                                 `ifdef VERBOSE
-                                $display("[%0t] OSCAN1 posedge: bit_pos=2, TCK high, tms_int=%b",
-                                         $time, tmsc_sampled);
+                                $display("[%0t] OSCAN1 posedge: bit_pos=2, tck low, tms_int=%b (committed on negedge)",
+                                         $time, tms_int);
                                 `endif
                             end
 
@@ -480,21 +489,36 @@ module cjtag_bridge (
                         endcase
                     end
 
-                    // On TCKC falling edge - lower TCK
+                    // TMS timing: On TCKC negedge at bit_pos=2, commit TMS first
+                    // and schedule TCK rise for the next clk_i cycle via tck_rise_req.
+                    // This ensures the TAP sees valid TMS when posedge TCK occurs.
                     if (tckc_negedge && bit_pos == 2'd2) begin
-                        tck_int <= 1'b0;  // End TCK pulse
+                        tms_int      <= tmsc_sampled;  // Commit TMS before TCK rises
+                        tck_rise_req <= 1'b1;          // Raise TCK next cycle
 
                         `ifdef VERBOSE
-                        $display("[%0t] OSCAN1 negedge: bit_pos=2, TCK low", $time);
+                        $display("[%0t] OSCAN1 negedge: bit_pos=2, tms_int->%b, requesting TCK rise", $time, tmsc_sampled);
                         `endif
+                    end
+
+                    // Raise TCK one cycle after tms_int was committed
+                    if (tck_rise_req) begin
+                        tck_int      <= 1'b1;
+                        tck_rise_req <= 1'b0;
+                    end
+
+                    // Sample TDO while TCK is high
+                    if (tck_int) begin
+                        tdo_sampled <= tdo_i;
                     end
                 end
 
                 default: begin
-                    tck_int <= 1'b0;
-                    tms_int <= 1'b1;
-                    tdi_int <= 1'b0;
+                    tck_int      <= 1'b0;
+                    tms_int      <= 1'b1;
+                    tdi_int      <= 1'b0;
                     tmsc_oen_int <= 1'b1;
+                    tck_rise_req <= 1'b0;
                 end
             endcase
         end
@@ -625,16 +649,16 @@ module cjtag_bridge (
     assert property (bit_pos_bounds)
         else $error("[ASSERT] Bit position out of bounds: %0d", bit_pos);
 
-    // Assert: Bit position advances on TCKC negedge when stable in OSCAN1
-    // (Simplified check - just ensures progression happens)
+    // Assert: Bit position advances on TCKC posedge when stable in OSCAN1
+    // (sampling and bit_pos advance moved to rising edge)
     property bit_pos_advances;
         @(posedge clk_i) disable iff (!ntrst_i)
         (state == ST_OSCAN1 && $past(state) == ST_OSCAN1 &&
-         $past(state, 2) == ST_OSCAN1 && $past(tckc_negedge)) |->
+         $past(state, 2) == ST_OSCAN1 && $past(tckc_posedge)) |->
             (bit_pos != $past(bit_pos, 2));
     endproperty
     assert property (bit_pos_advances)
-        else $error("[ASSERT] Bit position did not advance after TCKC negedge");
+        else $error("[ASSERT] Bit position did not advance after TCKC posedge");
 
     // -------------------------------------------------------------------------
     // Status Signal Assertions
@@ -669,13 +693,18 @@ module cjtag_bridge (
     assert property (tck_only_in_oscan1)
         else $error("[ASSERT] TCK high outside OSCAN1 state");
 
-    // Assert: TCK high only at bit position 2 in OSCAN1
+    // Assert: TCK high only around bit position 2 in OSCAN1.
+    // TCK rises on TCKC negedge (bit_pos=2) and falls on the following
+    // TCKC posedge (bit_pos=0). TCK is therefore high across the bit_pos 2->0 boundary.
+    // The tck_only_in_oscan1 assertion above already enforces the stronger constraint;
+    // this property only checks that TCK was raised from the correct packet slot.
     property tck_only_at_bit2;
         @(posedge clk_i) disable iff (!ntrst_i)
-        (state == ST_OSCAN1 && tck_o) |-> (bit_pos == 2'd2 || $past(bit_pos) == 2'd2);
+        (state == ST_OSCAN1 && tck_o && !$past(tck_o)) |->
+            ($past(bit_pos) == 2'd2 || $past(bit_pos, 2) == 2'd2);
     endproperty
     assert property (tck_only_at_bit2)
-        else $error("[ASSERT] TCK high at wrong bit position: %0d", bit_pos);
+        else $error("[ASSERT] TCK rose at wrong bit position: past=%0d", $past(bit_pos));
 
     // Assert: TMS stays high when not in OSCAN1 (JTAG idle)
     // Check with 1-cycle delay to account for pipeline

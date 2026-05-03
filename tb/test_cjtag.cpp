@@ -112,19 +112,20 @@ public:
 
     void tckc_cycle(int tmsc_val) {
         // System clock runs continuously in background
-        // TCKC edge timing: hold for ~10 system clock cycles per edge
+        // Per IEEE 1149.7: DTS drives TMSC on the falling edge (data setup),
+        // then raises TCKC so TAPC samples on the rising edge.
 
-        // Rising edge: TMSC changes on rising edge of TCKC
-        dut->tckc_i = 1;
+        // Falling edge: drive TMSC (data setup before rising edge)
+        dut->tckc_i = 0;
         dut->tmsc_i = tmsc_val;
 
-        // Run system clock for a few cycles
+        // Run system clock for a few cycles to propagate
         for (int i = 0; i < 10; i++) {
             tick();
         }
 
-        // Falling edge: bridge samples TMSC here
-        dut->tckc_i = 0;
+        // Rising edge: TAPC samples TMSC here
+        dut->tckc_i = 1;
 
         // Run system clock for a few more cycles
         for (int i = 0; i < 10; i++) {
@@ -196,7 +197,11 @@ public:
     }
 
     void send_oscan1_packet(int tdi, int tms, int* tdo_out) {
-        // System clock runs continuously in background
+        // Per IEEE 1149.7 / Fix A+B+C corrected timing:
+        //   Bit 0 (nTDI): drive on falling edge, sample on rising edge
+        //   Bit 1 (TMS):  drive on falling edge, sample on rising edge
+        //   Bit 2 (TDO):  TCKC falls -> RTL raises TCK; TDO driven on TMSC;
+        //                 read TDO while TCKC still low; raise TCKC to advance bit_pos
 
         // Bit 0: nTDI
         tckc_cycle(!tdi);
@@ -204,30 +209,23 @@ public:
         // Bit 1: TMS
         tckc_cycle(tms);
 
-        // Bit 2: TDO (read from device)
+        // Bit 2: TDO slot
+        // Drive TCKC low: RTL raises TCK on this negedge, drives tdo_sampled on TMSC
         dut->tckc_i = 0;
         dut->tmsc_i = 0;
 
-        // Run system clock
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < 20; i++) {
             tick();
         }
 
-        dut->tckc_i = 1;
-
-        // Run system clock
-        for (int i = 0; i < 10; i++) {
-            tick();
-        }
-
-        // Sample TDO while TCKC is high
+        // Read TDO while TCKC is still low (bit_pos=2, tmsc_oen=0, tmsc_o valid)
         if (tdo_out) {
             *tdo_out = dut->tmsc_o;
         }
 
-        dut->tckc_i = 0;
+        // Raise TCKC to complete the bit_pos=2 cycle (advances bit_pos to 0, lowers TCK)
+        dut->tckc_i = 1;
 
-        // Run system clock
         for (int i = 0; i < 10; i++) {
             tick();
         }
@@ -392,24 +390,26 @@ TEST_CASE(tck_generation) {
     tb.tckc_cycle(0); // TMS (bit 1)
     ASSERT_EQ(tb.dut->tck_o, 0, "TCK should be low after bit 1");
 
-    // Bit 2 (TDO) - TCK should pulse on TCKC posedge
-    tb.dut->tckc_i = 1;
-
-    // Run system clock to detect edge and update outputs
-    for (int i = 0; i < 10; i++) {
-        tb.tick();
-    }
-
-    ASSERT_EQ(tb.dut->tck_o, 1, "TCK should pulse high during TDO bit");
-
-    // TCK goes low on negedge of bit 2
+    // Bit 2 (TDO) - TCK should pulse on TCKC negedge (Fix B: TCK rises on falling edge)
+    // Lower TCKC first (this is the negedge that raises TCK in the RTL)
     tb.dut->tckc_i = 0;
 
+    // Run system clock to detect negedge and raise TCK
     for (int i = 0; i < 10; i++) {
         tb.tick();
     }
 
-    ASSERT_EQ(tb.dut->tck_o, 0, "TCK should return low after bit 2");
+    ASSERT_EQ(tb.dut->tck_o, 1, "TCK should pulse high during TDO bit (after TCKC negedge)");
+
+    // TCK goes low on TCKC posedge at bit_pos=2 (same cycle TMS is latched).
+    // Raise TCKC to trigger the posedge handler.
+    tb.dut->tckc_i = 1;
+
+    for (int i = 0; i < 10; i++) {
+        tb.tick();
+    }
+
+    ASSERT_EQ(tb.dut->tck_o, 0, "TCK should return low after bit_pos=2 posedge");
 }
 
 TEST_CASE(tmsc_bidirectional) {
@@ -431,6 +431,14 @@ TEST_CASE(tmsc_bidirectional) {
     ASSERT_EQ(tb.dut->tmsc_oen, 1, "TMSC should be input during TMS");
 
     // During bit 2 (TDO), TMSC is output (oen should be low)
+    // Per Fix B: TCK rises on TCKC negedge; RTL switches TMSC to output on TCKC posedge
+    // Lower TCKC (negedge at bit_pos=2 raises TCK)
+    tb.dut->tckc_i = 0;
+    for (int i = 0; i < 10; i++) {
+        tb.tick();
+    }
+
+    // Raise TCKC (posedge at bit_pos=2 switches TMSC to output)
     tb.dut->tckc_i = 1;
 
     // Run system clock to detect edge and update outputs
@@ -2327,11 +2335,13 @@ TEST_CASE(tck_pulse_characteristics) {
     ASSERT_EQ(tb.dut->tck_o, 0, "TCK should be low during bit 1");
 
     // Bit 2: TDO - TCK should pulse
-    tb.dut->tckc_i = 1;
-    for (int i = 0; i < 10; i++) tb.tick();
+    // With tck_rise_req mechanism: negedge of TCKC at bit_pos=2 triggers
+    // TMS commit + tck_rise_req, then TCK rises on the next clk_i cycle.
+    tb.dut->tckc_i = 0;  // negedge: triggers tms_int commit and tck_rise_req
+    for (int i = 0; i < 20; i++) tb.tick();
     ASSERT_EQ(tb.dut->tck_o, 1, "TCK should pulse high during bit 2");
 
-    tb.dut->tckc_i = 0;
+    tb.dut->tckc_i = 1;
     for (int i = 0; i < 10; i++) tb.tick();
     ASSERT_EQ(tb.dut->tck_o, 0, "TCK should return low after bit 2");
 }
@@ -2355,14 +2365,19 @@ TEST_CASE(tmsc_oen_timing_all_positions) {
     ASSERT_EQ(tb.dut->tmsc_oen, 1, "TMSC should be input during bit 1");
 
     // Bit 2: Output (oen=0)
-    tb.dut->tckc_i = 1;
+    // tmsc_oen goes to 0 on TCKC posedge at bit_pos=2 (output block handler).
+    // First do negedge (which triggers tms_int commit and tck_rise_req),
+    // then posedge (which lowers TCK and sets tmsc_oen=0).
+    tb.dut->tckc_i = 0;  // negedge at bit_pos=2
+    for (int i = 0; i < 10; i++) tb.tick();
+    tb.dut->tckc_i = 1;  // posedge at bit_pos=2: tmsc_oen_int <= 0
     for (int i = 0; i < 10; i++) tb.tick();
     ASSERT_EQ(tb.dut->tmsc_oen, 0, "TMSC should be output during bit 2");
 
-    // Complete bit 2 falling edge
+    // Complete bit 2: start next packet (bit 0 rising edge sets oen back to input)
     tb.dut->tckc_i = 0;
     for (int i = 0; i < 10; i++) tb.tick();
-    // tmsc_oen stays 0 after bit 2 until next packet starts
+    // tmsc_oen stays 0 (bit_pos now 0, next posedge will set it back)
 
     // Start next packet - bit 0 rising edge should set oen back to input
     tb.dut->tckc_i = 1;

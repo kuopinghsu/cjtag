@@ -64,12 +64,13 @@ public:
     }
 
     void tckc_cycle(int tmsc_val) {
-        dut->tckc_i = 1;
+        // Per IEEE 1149.7: drive data on falling edge, TAPC samples on rising edge
+        dut->tckc_i = 0;
         dut->tmsc_i = tmsc_val;
         for (int i = 0; i < 10; i++) {
             tick();
         }
-        dut->tckc_i = 0;
+        dut->tckc_i = 1;
         for (int i = 0; i < 10; i++) {
             tick();
         }
@@ -111,22 +112,23 @@ public:
     }
 
     void send_oscan1_packet(int tdi, int tms, int* tdo_out) {
+        // Bit 0: nTDI - drive on falling edge, sample on rising edge
         tckc_cycle(!tdi);
+        // Bit 1: TMS - drive on falling edge, sample on rising edge
         tckc_cycle(tms);
-
+        // Bit 2: TDO slot
+        // negedge: RTL commits tms_int, schedules tck_rise_req; TCK rises next cycle
         dut->tckc_i = 0;
         dut->tmsc_i = 0;
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < 20; i++) {
             tick();
         }
-        dut->tckc_i = 1;
-        for (int i = 0; i < 10; i++) {
-            tick();
-        }
+        // Read TDO while TCKC still low (tdo_sampled valid after TCK pulsed)
         if (tdo_out) {
             *tdo_out = dut->tmsc_o;
         }
-        dut->tckc_i = 0;
+        // posedge: lowers TCK, sets tmsc_oen=output, advances bit_pos to 0
+        dut->tckc_i = 1;
         for (int i = 0; i < 10; i++) {
             tick();
         }

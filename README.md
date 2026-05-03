@@ -85,7 +85,6 @@ cjtag/
 │   └── copilot-instructions.md  # GitHub Copilot instructions
 ├── src/                   # RTL source files
 │   ├── top.sv             # Top-level module (simulation)
-│   ├── top_fpga.sv        # Top-level module (FPGA synthesis)
 │   ├── README.md          # RTL documentation
 │   ├── cjtag/
 │   │   └── cjtag_bridge.sv    # cJTAG to JTAG converter
@@ -108,11 +107,6 @@ cjtag/
 │   ├── TEST_GUIDE.md      # Comprehensive test documentation
 │   ├── CLOCK_REQUIREMENTS.md  # Timing and clock constraints
 │   └── PERFORMANCE.md     # Performance characteristics
-├── fpga/                  # FPGA synthesis files
-│   ├── Makefile           # FPGA build system
-│   ├── build_xcku5p.tcl   # Vivado synthesis script (Xilinx XCKU5P)
-│   ├── constraints.xdc    # Timing and pin constraints
-│   └── README.md          # FPGA build documentation
 ├── openocd/               # OpenOCD integration
 │   ├── cjtag.cfg          # OpenOCD configuration with test suite
 │   └── patched/           # OpenOCD patches for cJTAG support
