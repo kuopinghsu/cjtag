@@ -1,5 +1,5 @@
 diff --git a/src/jtag/drivers/jtag_vpi.c b/src/jtag/drivers/jtag_vpi.c
-index fac27b306..d90b1e865 100644
+index fac27b306..2ddb71cbd 100644
 --- a/src/jtag/drivers/jtag_vpi.c
 +++ b/src/jtag/drivers/jtag_vpi.c
 @@ -37,6 +37,7 @@
@@ -43,7 +43,7 @@ index fac27b306..d90b1e865 100644
  		int retval = read_socket(sockfd, ((char *)vpi) + bytes_buffered, bytes_to_receive);
  		if (retval < 0) {
  #ifdef _WIN32
-@@ -195,6 +204,195 @@ static int jtag_vpi_receive_cmd(struct vpi_cmd *vpi)
+@@ -195,6 +204,208 @@ static int jtag_vpi_receive_cmd(struct vpi_cmd *vpi)
  	return ERROR_OK;
  }
  
@@ -115,24 +115,25 @@ index fac27b306..d90b1e865 100644
 +	LOG_DEBUG("  EC:  %d,%d,%d,%d", ec[0], ec[1], ec[2], ec[3]);
 +	LOG_DEBUG("  CP:  %d,%d,%d,%d", cp[0], cp[1], cp[2], cp[3]);
 +
++	/* drive each bit on falling edge, then raise TCKC for TAPC to sample */
 +	for (int i = 0; i < 4; i++) {
-+		if (jtag_vpi_send_tckc_tmsc(1, oac[i]) != ERROR_OK)
-+			return ERROR_FAIL;
 +		if (jtag_vpi_send_tckc_tmsc(0, oac[i]) != ERROR_OK)
 +			return ERROR_FAIL;
++		if (jtag_vpi_send_tckc_tmsc(1, oac[i]) != ERROR_OK)
++			return ERROR_FAIL;
 +	}
 +
 +	for (int i = 0; i < 4; i++) {
-+		if (jtag_vpi_send_tckc_tmsc(1, ec[i]) != ERROR_OK)
-+			return ERROR_FAIL;
 +		if (jtag_vpi_send_tckc_tmsc(0, ec[i]) != ERROR_OK)
 +			return ERROR_FAIL;
++		if (jtag_vpi_send_tckc_tmsc(1, ec[i]) != ERROR_OK)
++			return ERROR_FAIL;
 +	}
 +
 +	for (int i = 0; i < 4; i++) {
-+		if (jtag_vpi_send_tckc_tmsc(1, cp[i]) != ERROR_OK)
-+			return ERROR_FAIL;
 +		if (jtag_vpi_send_tckc_tmsc(0, cp[i]) != ERROR_OK)
++			return ERROR_FAIL;
++		if (jtag_vpi_send_tckc_tmsc(1, cp[i]) != ERROR_OK)
 +			return ERROR_FAIL;
 +	}
 +
@@ -144,11 +145,12 @@ index fac27b306..d90b1e865 100644
 +	uint8_t packet = (1 << 4) | (cmd & 0x0F);
 +	int bit_count = 5;
 +
++	/* drive each bit on falling edge, then raise TCKC for TAPC to sample */
 +	for (int i = bit_count - 1; i >= 0; i--) {
 +		uint8_t bit = (packet >> i) & 1;
-+		if (jtag_vpi_send_tckc_tmsc(1, bit) != ERROR_OK)
-+			return ERROR_FAIL;
 +		if (jtag_vpi_send_tckc_tmsc(0, bit) != ERROR_OK)
++			return ERROR_FAIL;
++		if (jtag_vpi_send_tckc_tmsc(1, bit) != ERROR_OK)
 +			return ERROR_FAIL;
 +	}
 +
@@ -157,29 +159,40 @@ index fac27b306..d90b1e865 100644
 +
 +static int oscan1_sf0_encode(uint8_t tms, uint8_t tdi, uint8_t *tdo)
 +{
-+	/* Simplified 2-bit packet format for cJTAG bridge:
-+	 *   tckc_cycle(!tdi);  // Bit 0: inverted TDI
-+	 *   tckc_cycle(tms);   // Bit 1: TMS
-+	 *   tckc pulse high to read TDO */
++	/* IEEE 1149.7 "Falling Edge Change / Rising Edge Sample" rule.
++	 * DTS (controller) drives TMSC on the falling edge (TCKC=0), then raises
++	 * TCKC so the TAPC samples the stable value on the rising edge.
++	 *
++	 * OScan1 3-bit packet:
++	 *   Bit 0 (nTDI): drive on TCKC falling, sample on TCKC rising
++	 *   Bit 1 (TMS):  drive on TCKC falling, sample on TCKC rising
++	 *   Bit 2 (TDO):  TCKC rising triggers TCK pulse; read TDO on TCKC falling */
 +	uint8_t inverted_tdi = !tdi;
 +
-+	if (jtag_vpi_send_tckc_tmsc(1, inverted_tdi) != ERROR_OK)
-+		return ERROR_FAIL;
++	/* Bit 0: drive nTDI on falling edge, raise TCKC for TAPC to sample */
 +	if (jtag_vpi_send_tckc_tmsc(0, inverted_tdi) != ERROR_OK)
 +		return ERROR_FAIL;
-+
-+	if (jtag_vpi_send_tckc_tmsc(1, tms) != ERROR_OK)
++	if (jtag_vpi_send_tckc_tmsc(1, inverted_tdi) != ERROR_OK)
 +		return ERROR_FAIL;
++
++	/* Bit 1: drive TMS on falling edge, raise TCKC for TAPC to sample */
 +	if (jtag_vpi_send_tckc_tmsc(0, tms) != ERROR_OK)
 +		return ERROR_FAIL;
-+
-+	if (jtag_vpi_send_tckc_tmsc(1, 0) != ERROR_OK)
++	if (jtag_vpi_send_tckc_tmsc(1, tms) != ERROR_OK)
 +		return ERROR_FAIL;
 +
-+	*tdo = jtag_vpi_receive_tmsc();
++	/* Bit 2 (TDO slot): lower TCKC (RTL schedules TCK rise via tck_rise_req).
++         * The VPI server detects the TCK rising edge, waits for tdo_sampled to
++         * settle, then returns tmsc_o (= tdo_sampled while bit_pos=2) in the
++         * negedge response. Read TDO NOW before the posedge command overwrites
++         * last_oscan1_response with bit_pos=0 output (= 0). */
++        if (jtag_vpi_send_tckc_tmsc(0, 0) != ERROR_OK)
++                return ERROR_FAIL;
++        *tdo = jtag_vpi_receive_tmsc();
 +
-+	if (jtag_vpi_send_tckc_tmsc(0, 0) != ERROR_OK)
-+		return ERROR_FAIL;
++        /* Raise TCKC to complete the packet (lowers TCK, advances bit_pos to 0) */
++        if (jtag_vpi_send_tckc_tmsc(1, 0) != ERROR_OK)
++                return ERROR_FAIL;
 +
 +	return ERROR_OK;
 +}
@@ -239,7 +252,7 @@ index fac27b306..d90b1e865 100644
  /**
   * jtag_vpi_reset - ask to reset the JTAG device
   * @param trst 1 if TRST is to be asserted
-@@ -226,6 +424,23 @@ static int jtag_vpi_tms_seq(const uint8_t *bits, int nb_bits)
+@@ -226,6 +437,23 @@ static int jtag_vpi_tms_seq(const uint8_t *bits, int nb_bits)
  	struct vpi_cmd vpi;
  	int nb_bytes;
  
@@ -263,7 +276,7 @@ index fac27b306..d90b1e865 100644
  	memset(&vpi, 0, sizeof(struct vpi_cmd));
  	nb_bytes = DIV_ROUND_UP(nb_bits, 8);
  
-@@ -291,6 +506,28 @@ static int jtag_vpi_state_move(enum tap_state state)
+@@ -291,6 +519,28 @@ static int jtag_vpi_state_move(enum tap_state state)
  
  static int jtag_vpi_queue_tdi_xfer(uint8_t *bits, int nb_bits, int tap_shift)
  {
@@ -292,7 +305,7 @@ index fac27b306..d90b1e865 100644
  	struct vpi_cmd vpi;
  	int nb_bytes = DIV_ROUND_UP(nb_bits, 8);
  
-@@ -562,6 +799,16 @@ static int jtag_vpi_init(void)
+@@ -562,6 +812,16 @@ static int jtag_vpi_init(void)
  
  	LOG_INFO("jtag_vpi: Connection to %s : %u successful", server_address, server_port);
  
@@ -309,7 +322,7 @@ index fac27b306..d90b1e865 100644
  	return ERROR_OK;
  }
  
-@@ -589,6 +836,10 @@ static int jtag_vpi_quit(void)
+@@ -589,6 +849,10 @@ static int jtag_vpi_quit(void)
  	return ERROR_OK;
  }
  
@@ -320,7 +333,7 @@ index fac27b306..d90b1e865 100644
  COMMAND_HANDLER(jtag_vpi_set_port)
  {
  	if (CMD_ARGC == 0)
-@@ -645,6 +896,20 @@ static const struct command_registration jtag_vpi_subcommand_handlers[] = {
+@@ -645,6 +909,20 @@ static const struct command_registration jtag_vpi_subcommand_handlers[] = {
  			"before OpenOCD exits (default: off)",
  		.usage = "<on|off>",
  	},
@@ -341,7 +354,7 @@ index fac27b306..d90b1e865 100644
  	COMMAND_REGISTRATION_DONE
  };
  
-@@ -664,6 +929,76 @@ static struct jtag_interface jtag_vpi_interface = {
+@@ -664,6 +942,76 @@ static struct jtag_interface jtag_vpi_interface = {
  	.execute_queue = jtag_vpi_execute_queue,
  };
  
