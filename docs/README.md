@@ -6,7 +6,7 @@ This directory contains comprehensive documentation for the cJTAG Bridge project
 
 | Document | Description | Key Topics |
 |----------|-------------|------------|
-| [TEST_GUIDE.md](TEST_GUIDE.md) | Complete test suite guide | 131 tests, coverage analysis, debugging |
+| [TEST_GUIDE.md](TEST_GUIDE.md) | Complete test suite guide | 126 tests, coverage analysis, debugging |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System design and architecture | FSM, modules, interfaces, timing |
 | [PROTOCOL.md](PROTOCOL.md) | cJTAG protocol specification | IEEE 1149.7, OScan1, escape sequences |
 
@@ -14,7 +14,7 @@ This directory contains comprehensive documentation for the cJTAG Bridge project
 
 ### 🧪 Testing & Verification
 **→ [TEST_GUIDE.md](TEST_GUIDE.md)**
-- **131 Verilator tests** (100% passing ✅)
+- **126 Verilator tests** (100% passing ✅)
 - **18-step OpenOCD integration test** (100% passing ✅)
 - **VPI IDCODE verification test** (passing ✅)
 - Complete test catalog organized in 13 categories
@@ -24,7 +24,7 @@ This directory contains comprehensive documentation for the cJTAG Bridge project
 - Performance metrics and best practices
 
 **Test Statistics:**
-- Verilator Tests: 131 (unit & integration)
+- Verilator Tests: 126 (unit & integration)
 - OpenOCD Tests: 8 (system integration)
 - VPI Tests: 1 (IDCODE verification)
 - Test File: 5,100+ lines
@@ -61,7 +61,7 @@ This directory contains comprehensive documentation for the cJTAG Bridge project
 - Escape sequence detection (all toggle counts)
 - OAC validation (Online Activation Code)
 - OpenOCD VPI interface integration
-- **131 Verilator automated tests**
+- **126 Verilator automated tests**
 - **18-step OpenOCD integration test**
 - **VPI IDCODE verification test**
 - Complete protocol validation
@@ -97,7 +97,7 @@ This directory contains comprehensive documentation for the cJTAG Bridge project
 - 6-7 toggles: Selection (OFFLINE → ONLINE_ACT)
 - 8+ toggles: Reset (any state → OFFLINE)
 - Hardware reset (nTRST) supported
-- All escape sequences validated by 131 comprehensive tests
+- All escape sequences validated by 126 comprehensive tests
 
 ## Getting Started
 
@@ -121,11 +121,11 @@ Check [ARCHITECTURE.md](ARCHITECTURE.md) for system design:
 ### 4. Run the Tests
 Follow [TEST_GUIDE.md](TEST_GUIDE.md) to validate:
 ```bash
-make test              # 131 Verilator tests
+make test              # 126 Verilator tests
 make test-idcode       # VPI IDCODE test
 make test-openocd      # 18-step OpenOCD integration test
 ```
-Expected: **131/131 Verilator tests passed ✅**
+Expected: **126/126 Verilator tests passed ✅**
 Expected: **8/8 OpenOCD tests passed ✅**
 Expected: **VPI IDCODE test passed ✅**
 
@@ -184,7 +184,7 @@ Expected: **VPI IDCODE test passed ✅**
 ### Project Files
 - [Main README](../README.md) - Project overview
 - [Source Code](../src/) - SystemVerilog implementation
-- [Test Suite](../tb/test_cjtag.cpp) - 131 automated tests
+- [Test Suite](../tb/test_cjtag.cpp) - 126 automated tests
 - [Makefile](../Makefile) - Build system
 
 ## Contributing to Documentation
@@ -229,6 +229,6 @@ Expected: **VPI IDCODE test passed ✅**
 
 **Documentation Version**: 2026.01
 **Last Updated**: January 28, 2026
-**Project Status**: ✅ Production Ready (131 Verilator + 8 OpenOCD + 1 VPI tests passing)
+**Project Status**: ✅ Production Ready (126 Verilator + 8 OpenOCD + 1 VPI tests passing)
 
 For the latest information, visit the main [project README](../README.md).

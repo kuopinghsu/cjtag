@@ -147,7 +147,7 @@ int main(int argc, char** argv) {
     enum EventType { SYS_CLK_LOW, SYS_CLK_HIGH, VPI_CHECK };
     EventType next_event = SYS_CLK_LOW;
     int clocks_since_vpi = 0;
-    const int clocks_per_vpi = 10;  // Check VPI every 10 clocks (balance speed vs RTL processing time)
+    const int clocks_per_vpi = 20;  // Check VPI every 20 clocks (give RTL time to settle)
     vluint64_t tick_count = 0;
 
     while (!g_shutdown && !Verilated::gotFinish()) {

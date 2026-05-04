@@ -225,7 +225,7 @@ This implementation **fully supports** all IEEE 1149.7 escape sequences:
 - **6-7 toggles**: Selection (OFFLINE → ONLINE_ACT)
 - **8+ toggles**: Reset (any state → OFFLINE)
 
-All escape sequences work reliably in all states and are validated by the comprehensive test suite (131 Verilator tests).
+All escape sequences work reliably in all states and are validated by the comprehensive test suite (126 Verilator tests).
 
 ### Physical Layer Considerations
 

@@ -431,22 +431,22 @@ TEST_CASE(tmsc_bidirectional) {
     ASSERT_EQ(tb.dut->tmsc_oen, 1, "TMSC should be input during TMS");
 
     // During bit 2 (TDO), TMSC is output (oen should be low)
-    // Per Fix B: TCK rises on TCKC negedge; RTL switches TMSC to output on TCKC posedge
-    // Lower TCKC (negedge at bit_pos=2 raises TCK)
+    // TDO window opens on TCKC negedge (bit_pos=2) and closes on TCKC posedge.
+    // Lower TCKC (negedge at bit_pos=2 commits TMS and opens TDO output window)
     tb.dut->tckc_i = 0;
     for (int i = 0; i < 10; i++) {
         tb.tick();
     }
 
-    // Raise TCKC (posedge at bit_pos=2 switches TMSC to output)
+    ASSERT_EQ(tb.dut->tmsc_oen, 0, "TMSC should be output during TDO");
+
+    // Raise TCKC (posedge at bit_pos=2 closes the TDO window)
     tb.dut->tckc_i = 1;
 
     // Run system clock to detect edge and update outputs
     for (int i = 0; i < 10; i++) {
         tb.tick();
     }
-
-    ASSERT_EQ(tb.dut->tmsc_oen, 0, "TMSC should be output during TDO");
 }
 
 TEST_CASE(jtag_tap_idcode) {
@@ -2365,21 +2365,18 @@ TEST_CASE(tmsc_oen_timing_all_positions) {
     ASSERT_EQ(tb.dut->tmsc_oen, 1, "TMSC should be input during bit 1");
 
     // Bit 2: Output (oen=0)
-    // tmsc_oen goes to 0 on TCKC posedge at bit_pos=2 (output block handler).
-    // First do negedge (which triggers tms_int commit and tck_rise_req),
-    // then posedge (which lowers TCK and sets tmsc_oen=0).
-    tb.dut->tckc_i = 0;  // negedge at bit_pos=2
-    for (int i = 0; i < 10; i++) tb.tick();
-    tb.dut->tckc_i = 1;  // posedge at bit_pos=2: tmsc_oen_int <= 0
+    // tmsc_oen opens on TCKC negedge at bit_pos=2 and closes on TCKC posedge.
+    tb.dut->tckc_i = 0;  // negedge at bit_pos=2: tmsc_oen_int <= 0
     for (int i = 0; i < 10; i++) tb.tick();
     ASSERT_EQ(tb.dut->tmsc_oen, 0, "TMSC should be output during bit 2");
+    tb.dut->tckc_i = 1;  // posedge at bit_pos=2: tmsc_oen_int <= 1, bit_pos -> 0
+    for (int i = 0; i < 10; i++) tb.tick();
 
-    // Complete bit 2: start next packet (bit 0 rising edge sets oen back to input)
+    // Complete bit 2: start next packet (bit 0)
     tb.dut->tckc_i = 0;
     for (int i = 0; i < 10; i++) tb.tick();
-    // tmsc_oen stays 0 (bit_pos now 0, next posedge will set it back)
 
-    // Start next packet - bit 0 rising edge should set oen back to input
+    // Start next packet - bit 0 rising edge should set oen to input
     tb.dut->tckc_i = 1;
     for (int i = 0; i < 10; i++) tb.tick();
     ASSERT_EQ(tb.dut->tmsc_oen, 1, "TMSC should return to input at start of next packet");
@@ -3059,6 +3056,10 @@ TEST_CASE(cp_validation_all_bits_correct) {
     ASSERT_EQ(tb.dut->online_o, 1, "Correct CP parity should activate");
 }
 
+// DISABLED: CP validation no longer enforced for ftdi.c compatibility
+// ftdi.c sends CP=0x0 (incorrect), but real ARM hardware accepts it.
+// Our bridge now accepts any CP value while still validating OAC and EC.
+#if 0
 TEST_CASE(cp_validation_single_bit_errors) {
     // Test CP validation rejects single-bit errors in CP field
 
@@ -3104,7 +3105,10 @@ TEST_CASE(cp_validation_single_bit_errors) {
     for (int i = 0; i < 50; i++) tb.tick();
     ASSERT_EQ(tb.dut->online_o, 0, "CP bit 3 error should reject");
 }
+#endif
 
+// DISABLED: CP validation no longer enforced for ftdi.c compatibility
+#if 0
 TEST_CASE(cp_validation_multiple_bit_errors) {
     // Test CP validation rejects multiple-bit errors
 
@@ -3128,6 +3132,7 @@ TEST_CASE(cp_validation_multiple_bit_errors) {
     for (int i = 0; i < 50; i++) tb.tick();
     ASSERT_EQ(tb.dut->online_o, 0, "Two CP bits wrong should reject");
 }
+#endif
 
 TEST_CASE(cp_validation_with_wrong_ec) {
     // Test that wrong EC with matching CP still fails (OAC must be correct too)
@@ -3142,6 +3147,8 @@ TEST_CASE(cp_validation_with_wrong_ec) {
     ASSERT_EQ(tb.dut->online_o, 0, "Wrong EC should reject even with valid CP for that EC");
 }
 
+// DISABLED: CP validation no longer enforced for ftdi.c compatibility
+#if 0
 TEST_CASE(cp_validation_all_zeros) {
     // Test CP = 0000 (all zeros) - should fail since correct CP is 0010
 
@@ -3165,6 +3172,7 @@ TEST_CASE(cp_validation_all_ones) {
     for (int i = 0; i < 50; i++) tb.tick();
     ASSERT_EQ(tb.dut->online_o, 0, "All-one CP should reject");
 }
+#endif
 
 TEST_CASE(cp_xor_calculation_verification) {
     // Verify CP calculation: CP[i] = OAC[i] ⊕ EC[i]
@@ -3199,6 +3207,8 @@ TEST_CASE(cp_xor_calculation_verification) {
     ASSERT_EQ(tb.dut->online_o, 1, "Correctly calculated CP should activate");
 }
 
+// DISABLED: CP validation no longer enforced for ftdi.c compatibility
+#if 0
 TEST_CASE(cp_validation_stress_test) {
     // Stress test: Try many invalid CP values rapidly
 
@@ -3233,6 +3243,7 @@ TEST_CASE(cp_validation_stress_test) {
     for (int i = 0; i < 50; i++) tb.tick();
     ASSERT_EQ(tb.dut->online_o, 1, "Valid sequence should activate after failed attempts");
 }
+#endif
 
 TEST_CASE(oscan1_format_compliance) {
     // Verify 3-bit packet format: nTDI, TMS, TDO
@@ -3374,8 +3385,8 @@ TEST_CASE(dtmcs_register_format) {
 
 TEST_CASE(dmi_register_access) {
     // Test DMI (Debug Module Interface) register access
-    // DMI is at IR = 0x11, 41-bit register (7-bit address + 32-bit data + 2-bit op)
-    // Format: [40:34]=address, [33:2]=data, [1:0]=op
+    // DMI is at IR = 0x11, 40-bit register (6-bit address + 32-bit data + 2-bit op)
+    // Format: [39:34]=address, [33:2]=data, [1:0]=op
 
     tb.send_escape_sequence(6);
     tb.send_oac_sequence();
@@ -3411,9 +3422,9 @@ TEST_CASE(dmi_register_access) {
     tb.send_oscan1_packet(0, 0, nullptr); // -> SHIFT_DR
 
     // Shift in 41 bits
-    for (int i = 0; i < 41; i++) {
+    for (int i = 0; i < 40; i++) {
         int tdi = (dmi_write >> i) & 1;
-        int tms = (i == 40) ? 1 : 0;
+        int tms = (i == 39) ? 1 : 0;
         tb.send_oscan1_packet(tdi, tms, nullptr);
     }
     tb.send_oscan1_packet(0, 1, nullptr); // EXIT1_DR -> UPDATE_DR
@@ -3424,9 +3435,9 @@ TEST_CASE(dmi_register_access) {
     tb.send_oscan1_packet(0, 0, nullptr); // -> CAPTURE_DR
 
     uint64_t dmi_read = 0;
-    for (int i = 0; i < 41; i++) {
+    for (int i = 0; i < 40; i++) {
         int tdo = 0;
-        int tms = (i == 40) ? 1 : 0;
+        int tms = (i == 39) ? 1 : 0;
         tb.send_oscan1_packet(0, tms, &tdo);
         dmi_read |= ((uint64_t)tdo << i);
     }
@@ -3434,7 +3445,7 @@ TEST_CASE(dmi_register_access) {
     // Extract fields: op should be 0 (success), address should be 0x11
     uint8_t op = dmi_read & 0x3;
     uint32_t data = (dmi_read >> 2) & 0xFFFFFFFF;
-    uint8_t addr = (dmi_read >> 34) & 0x7F;
+    uint8_t addr = (dmi_read >> 34) & 0x3F;
 
     ASSERT_EQ(op, 0, "DMI op should be 0 (operation succeeded)");
     ASSERT_EQ(addr, 0x11, "DMI address should be 0x11 (dmstatus)");
@@ -3540,9 +3551,9 @@ TEST_CASE(dmi_write_dmcontrol) {
     tb.send_oscan1_packet(0, 0, nullptr); // -> CAPTURE_DR
     tb.send_oscan1_packet(0, 0, nullptr); // -> SHIFT_DR
 
-    for (int i = 0; i < 41; i++) {
+    for (int i = 0; i < 40; i++) {
         int tdi = (dmi_write >> i) & 1;
-        int tms = (i == 40) ? 1 : 0;
+        int tms = (i == 39) ? 1 : 0;
         tb.send_oscan1_packet(tdi, tms, nullptr);
     }
     tb.send_oscan1_packet(0, 1, nullptr); // -> UPDATE_DR
@@ -3553,9 +3564,9 @@ TEST_CASE(dmi_write_dmcontrol) {
     tb.send_oscan1_packet(0, 0, nullptr); // -> CAPTURE_DR
 
     uint64_t dmi_read = 0;
-    for (int i = 0; i < 41; i++) {
+    for (int i = 0; i < 40; i++) {
         int tdo = 0;
-        int tms = (i == 40) ? 1 : 0;
+        int tms = (i == 39) ? 1 : 0;
         tb.send_oscan1_packet(0, tms, &tdo);
         dmi_read |= ((uint64_t)tdo << i);
     }
@@ -3594,9 +3605,9 @@ TEST_CASE(dmi_read_after_write) {
     uint64_t dmi_write = (0x10ULL << 34) | (0x12345678ULL << 2) | 2ULL;
     tb.send_oscan1_packet(0, 1, nullptr); // -> SELECT_DR
     tb.send_oscan1_packet(0, 0, nullptr); // -> CAPTURE_DR
-    for (int i = 0; i < 41; i++) {
+    for (int i = 0; i < 40; i++) {
         int tdi = (dmi_write >> i) & 1;
-        int tms = (i == 40) ? 1 : 0;
+        int tms = (i == 39) ? 1 : 0;
         tb.send_oscan1_packet(tdi, tms, nullptr);
     }
     tb.send_oscan1_packet(0, 1, nullptr); // EXIT1_DR -> UPDATE_DR
@@ -3606,9 +3617,9 @@ TEST_CASE(dmi_read_after_write) {
     uint64_t dmi_read_req = (0x10ULL << 34) | (0ULL << 2) | 1ULL;
     tb.send_oscan1_packet(0, 1, nullptr);  // Select-DR-Scan
     tb.send_oscan1_packet(0, 0, nullptr);  // Capture-DR
-    for (int i = 0; i < 41; i++) {
+    for (int i = 0; i < 40; i++) {
         int tdi = (dmi_read_req >> i) & 1;
-        int tms = (i == 40) ? 1 : 0;
+        int tms = (i == 39) ? 1 : 0;
         tb.send_oscan1_packet(tdi, tms, nullptr);
     }
     tb.send_oscan1_packet(0, 1, nullptr);  // Update-DR
@@ -3618,9 +3629,9 @@ TEST_CASE(dmi_read_after_write) {
     tb.send_oscan1_packet(0, 1, nullptr);
     tb.send_oscan1_packet(0, 0, nullptr);  // -> CAPTURE_DR
     uint64_t dmi_result = 0;
-    for (int i = 0; i < 41; i++) {
+    for (int i = 0; i < 40; i++) {
         int tdo = 0;
-        int tms = (i == 40) ? 1 : 0;
+        int tms = (i == 39) ? 1 : 0;
         tb.send_oscan1_packet(0, tms, &tdo);
         dmi_result |= ((uint64_t)tdo << i);
     }
@@ -3658,9 +3669,9 @@ TEST_CASE(dmi_hartinfo_register) {
     uint64_t dmi_read_req = (0x16ULL << 34) | (0ULL << 2) | 1ULL;
     tb.send_oscan1_packet(0, 1, nullptr);
     tb.send_oscan1_packet(0, 0, nullptr);
-    for (int i = 0; i < 41; i++) {
+    for (int i = 0; i < 40; i++) {
         int tdi = (dmi_read_req >> i) & 1;
-        int tms = (i == 40) ? 1 : 0;
+        int tms = (i == 39) ? 1 : 0;
         tb.send_oscan1_packet(tdi, tms, nullptr);
     }
     tb.send_oscan1_packet(0, 1, nullptr);
@@ -3673,15 +3684,15 @@ TEST_CASE(dmi_hartinfo_register) {
     int first_bit = 0;
     tb.send_oscan1_packet(0, 0, &first_bit); // First SHIFT, reads bit 0
     dmi_result = first_bit;
-    for (int i = 1; i < 41; i++) {
+    for (int i = 1; i < 40; i++) {
         int tdo = 0;
-        int tms = (i == 40) ? 1 : 0;
+        int tms = (i == 39) ? 1 : 0;
         tb.send_oscan1_packet(0, tms, &tdo);
         dmi_result |= ((uint64_t)tdo << i);
     }
 
     uint8_t op = dmi_result & 0x3;
-    uint8_t addr = (dmi_result >> 34) & 0x7F;
+    uint8_t addr = (dmi_result >> 34) & 0x3F;
     ASSERT_EQ(op, 0, "DMI operation should succeed");
     ASSERT_EQ(addr, 0x16, "Address should be hartinfo (0x16)");
 }
@@ -3711,13 +3722,13 @@ TEST_CASE(dmi_invalid_address) {
     tb.send_oscan1_packet(0, 1, nullptr); // EXIT1_IR -> UPDATE_IR
     tb.send_oscan1_packet(0, 0, nullptr); // UPDATE_IR -> RUN_TEST_IDLE
 
-    // Read invalid address 0x7F
-    uint64_t dmi_read_req = (0x7FULL << 34) | (0ULL << 2) | 1ULL;
+    // Read unimplemented address 0x3F (all-ones 6-bit address)
+    uint64_t dmi_read_req = (0x3FULL << 34) | (0ULL << 2) | 1ULL;
     tb.send_oscan1_packet(0, 1, nullptr);
     tb.send_oscan1_packet(0, 0, nullptr);
-    for (int i = 0; i < 41; i++) {
+    for (int i = 0; i < 40; i++) {
         int tdi = (dmi_read_req >> i) & 1;
-        int tms = (i == 40) ? 1 : 0;
+        int tms = (i == 39) ? 1 : 0;
         tb.send_oscan1_packet(tdi, tms, nullptr);
     }
     tb.send_oscan1_packet(0, 1, nullptr);
@@ -3727,9 +3738,9 @@ TEST_CASE(dmi_invalid_address) {
     tb.send_oscan1_packet(0, 1, nullptr);
     tb.send_oscan1_packet(0, 0, nullptr);
     uint64_t dmi_result = 0;
-    for (int i = 0; i < 41; i++) {
+    for (int i = 0; i < 40; i++) {
         int tdo = 0;
-        int tms = (i == 40) ? 1 : 0;
+        int tms = (i == 39) ? 1 : 0;
         tb.send_oscan1_packet(0, tms, &tdo);
         dmi_result |= ((uint64_t)tdo << i);
     }
@@ -3814,9 +3825,9 @@ TEST_CASE(sequential_dmi_reads) {
         uint64_t dmi_read_req = ((uint64_t)addresses[idx] << 34) | (0ULL << 2) | 1ULL;
         tb.send_oscan1_packet(0, 1, nullptr);
         tb.send_oscan1_packet(0, 0, nullptr);
-        for (int i = 0; i < 41; i++) {
+        for (int i = 0; i < 40; i++) {
             int tdi = (dmi_read_req >> i) & 1;
-            int tms = (i == 40) ? 1 : 0;
+            int tms = (i == 39) ? 1 : 0;
             tb.send_oscan1_packet(tdi, tms, nullptr);
         }
         tb.send_oscan1_packet(0, 1, nullptr);
@@ -3829,9 +3840,9 @@ TEST_CASE(sequential_dmi_reads) {
         int first_bit = 0;
         tb.send_oscan1_packet(0, 0, &first_bit); // First SHIFT, reads bit 0
         dmi_result = first_bit;
-        for (int i = 1; i < 41; i++) {
+        for (int i = 1; i < 40; i++) {
             int tdo = 0;
-            int tms = (i == 40) ? 1 : 0;
+            int tms = (i == 39) ? 1 : 0;
             tb.send_oscan1_packet(0, tms, &tdo);
             dmi_result |= ((uint64_t)tdo << i);
         }
@@ -3912,26 +3923,26 @@ TEST_CASE(dmi_41bit_boundary_test) {
     uint64_t dmi_write = (0x3FULL << 34) | (0xAAAAAAAAULL << 2) | 2ULL;
     tb.send_oscan1_packet(0, 1, nullptr);
     tb.send_oscan1_packet(0, 0, nullptr);
-    for (int i = 0; i < 41; i++) {
+    for (int i = 0; i < 40; i++) {
         int tdi = (dmi_write >> i) & 1;
-        int tms = (i == 40) ? 1 : 0;
+        int tms = (i == 39) ? 1 : 0;
         tb.send_oscan1_packet(tdi, tms, nullptr);
     }
     tb.send_oscan1_packet(0, 1, nullptr);
     tb.send_oscan1_packet(0, 0, nullptr);
 
-    // Verify 41-bit shifting works
+    // Verify 40-bit shifting works
     tb.send_oscan1_packet(0, 1, nullptr);
     tb.send_oscan1_packet(0, 0, nullptr);  // -> CAPTURE_DR
     uint64_t dmi_result = 0;
-    for (int i = 0; i < 41; i++) {
+    for (int i = 0; i < 40; i++) {
         int tdo = 0;
-        int tms = (i == 40) ? 1 : 0;
+        int tms = (i == 39) ? 1 : 0;
         tb.send_oscan1_packet(0, tms, &tdo);
         dmi_result |= ((uint64_t)tdo << i);
     }
 
-    uint8_t addr = (dmi_result >> 34) & 0x7F;
+    uint8_t addr = (dmi_result >> 34) & 0x3F;
     ASSERT_EQ(addr, 0x3F, "All 6 address bits should be preserved");
 }
 
@@ -4010,9 +4021,9 @@ TEST_CASE(complete_riscv_debug_init) {
     uint64_t dmi_read_req = (0x11ULL << 34) | (0ULL << 2) | 1ULL;
     tb.send_oscan1_packet(0, 1, nullptr);
     tb.send_oscan1_packet(0, 0, nullptr);
-    for (int i = 0; i < 41; i++) {
+    for (int i = 0; i < 40; i++) {
         int tdi = (dmi_read_req >> i) & 1;
-        int tms = (i == 40) ? 1 : 0;
+        int tms = (i == 39) ? 1 : 0;
         tb.send_oscan1_packet(tdi, tms, nullptr);
     }
     tb.send_oscan1_packet(0, 1, nullptr);
@@ -4021,9 +4032,9 @@ TEST_CASE(complete_riscv_debug_init) {
     tb.send_oscan1_packet(0, 1, nullptr);
     tb.send_oscan1_packet(0, 0, nullptr);
     uint64_t dmi_result = 0;
-    for (int i = 0; i < 41; i++) {
+    for (int i = 0; i < 40; i++) {
         int tdo = 0;
-        int tms = (i == 40) ? 1 : 0;
+        int tms = (i == 39) ? 1 : 0;
         tb.send_oscan1_packet(0, tms, &tdo);
         dmi_result |= ((uint64_t)tdo << i);
     }
@@ -4059,9 +4070,9 @@ TEST_CASE(dmcontrol_reset_bit) {
     uint64_t dmi_write = (0x10ULL << 34) | (0x00000001ULL << 2) | 2ULL;
     tb.send_oscan1_packet(0, 1, nullptr);
     tb.send_oscan1_packet(0, 0, nullptr);
-    for (int i = 0; i < 41; i++) {
+    for (int i = 0; i < 40; i++) {
         int tdi = (dmi_write >> i) & 1;
-        int tms = (i == 40) ? 1 : 0;
+        int tms = (i == 39) ? 1 : 0;
         tb.send_oscan1_packet(tdi, tms, nullptr);
     }
     tb.send_oscan1_packet(0, 1, nullptr);
@@ -4071,9 +4082,9 @@ TEST_CASE(dmcontrol_reset_bit) {
     uint64_t dmi_read_req = (0x10ULL << 34) | (0ULL << 2) | 1ULL;
     tb.send_oscan1_packet(0, 1, nullptr);
     tb.send_oscan1_packet(0, 0, nullptr);
-    for (int i = 0; i < 41; i++) {
+    for (int i = 0; i < 40; i++) {
         int tdi = (dmi_read_req >> i) & 1;
-        int tms = (i == 40) ? 1 : 0;
+        int tms = (i == 39) ? 1 : 0;
         tb.send_oscan1_packet(tdi, tms, nullptr);
     }
     tb.send_oscan1_packet(0, 1, nullptr);
@@ -4082,9 +4093,9 @@ TEST_CASE(dmcontrol_reset_bit) {
     tb.send_oscan1_packet(0, 1, nullptr);
     tb.send_oscan1_packet(0, 0, nullptr);  // -> CAPTURE_DR
     uint64_t dmi_result = 0;
-    for (int i = 0; i < 41; i++) {
+    for (int i = 0; i < 40; i++) {
         int tdo = 0;
-        int tms = (i == 40) ? 1 : 0;
+        int tms = (i == 39) ? 1 : 0;
         tb.send_oscan1_packet(0, tms, &tdo);
         dmi_result |= ((uint64_t)tdo << i);
     }
@@ -4121,9 +4132,9 @@ TEST_CASE(dmstatus_halt_flags) {
     uint64_t dmi_read = (0x11ULL << 34) | (0ULL << 2) | 1ULL;
     tb.send_oscan1_packet(0, 1, nullptr);
     tb.send_oscan1_packet(0, 0, nullptr);
-    for (int i = 1; i < 41; i++) {
+    for (int i = 1; i < 40; i++) {
         int tdi = (dmi_read >> i) & 1;
-        int tms = (i == 40) ? 1 : 0;
+        int tms = (i == 39) ? 1 : 0;
         tb.send_oscan1_packet(tdi, tms, nullptr);
     }
     tb.send_oscan1_packet(0, 1, nullptr);
@@ -4135,9 +4146,9 @@ TEST_CASE(dmstatus_halt_flags) {
     int first_bit = 0;
     tb.send_oscan1_packet(0, 0, &first_bit); // First SHIFT, reads bit 0
     dmi_result = first_bit;
-    for (int i = 1; i < 41; i++) {
+    for (int i = 1; i < 40; i++) {
         int tdo = 0;
-        int tms = (i == 40) ? 1 : 0;
+        int tms = (i == 39) ? 1 : 0;
         tb.send_oscan1_packet(0, tms, &tdo);
         dmi_result |= ((uint64_t)tdo << i);
     }
@@ -4176,9 +4187,9 @@ TEST_CASE(dmstatus_reset_flags) {
     uint64_t dmi_read = (0x11ULL << 34) | (0ULL << 2) | 1ULL;
     tb.send_oscan1_packet(0, 1, nullptr);
     tb.send_oscan1_packet(0, 0, nullptr);
-    for (int i = 1; i < 41; i++) {
+    for (int i = 1; i < 40; i++) {
         int tdi = (dmi_read >> i) & 1;
-        int tms = (i == 40) ? 1 : 0;
+        int tms = (i == 39) ? 1 : 0;
         tb.send_oscan1_packet(tdi, tms, nullptr);
     }
     tb.send_oscan1_packet(0, 1, nullptr);
@@ -4190,9 +4201,9 @@ TEST_CASE(dmstatus_reset_flags) {
     int first_bit = 0;
     tb.send_oscan1_packet(0, 0, &first_bit); // First SHIFT, reads bit 0
     dmi_result = first_bit;
-    for (int i = 1; i < 41; i++) {
+    for (int i = 1; i < 40; i++) {
         int tdo = 0;
-        int tms = (i == 40) ? 1 : 0;
+        int tms = (i == 39) ? 1 : 0;
         tb.send_oscan1_packet(0, tms, &tdo);
         dmi_result |= ((uint64_t)tdo << i);
     }
@@ -4232,9 +4243,9 @@ TEST_CASE(dmi_back_to_back_operations) {
     uint64_t dmi_write = (0x10ULL << 34) | (0xDEADBEEFULL << 2) | 2ULL;
     tb.send_oscan1_packet(0, 1, nullptr);
     tb.send_oscan1_packet(0, 0, nullptr);
-    for (int i = 1; i < 41; i++) {
+    for (int i = 1; i < 40; i++) {
         int tdi = (dmi_write >> i) & 1;
-        int tms = (i == 40) ? 1 : 0;
+        int tms = (i == 39) ? 1 : 0;
         tb.send_oscan1_packet(tdi, tms, nullptr);
     }
     tb.send_oscan1_packet(0, 1, nullptr);
@@ -4243,9 +4254,9 @@ TEST_CASE(dmi_back_to_back_operations) {
 
     uint64_t dmi_read = (0x10ULL << 34) | (0ULL << 2) | 1ULL;
     tb.send_oscan1_packet(0, 0, nullptr);
-    for (int i = 1; i < 41; i++) {
+    for (int i = 1; i < 40; i++) {
         int tdi = (dmi_read >> i) & 1;
-        int tms = (i == 40) ? 1 : 0;
+        int tms = (i == 39) ? 1 : 0;
         tb.send_oscan1_packet(tdi, tms, nullptr);
     }
     tb.send_oscan1_packet(0, 1, nullptr);
@@ -4339,9 +4350,9 @@ TEST_CASE(debug_module_all_registers) {
         uint64_t dmi_read = ((uint64_t)addresses[idx] << 34) | (0ULL << 2) | 1ULL;
         tb.send_oscan1_packet(0, 1, nullptr);
         tb.send_oscan1_packet(0, 0, nullptr);
-        for (int i = 1; i < 41; i++) {
+        for (int i = 1; i < 40; i++) {
             int tdi = (dmi_read >> i) & 1;
-            int tms = (i == 40) ? 1 : 0;
+            int tms = (i == 39) ? 1 : 0;
             tb.send_oscan1_packet(tdi, tms, nullptr);
         }
         tb.send_oscan1_packet(0, 1, nullptr);
@@ -4354,9 +4365,9 @@ TEST_CASE(debug_module_all_registers) {
         int first_bit = 0;
         tb.send_oscan1_packet(0, 0, &first_bit); // First SHIFT, reads bit 0
         dmi_result = first_bit;
-        for (int i = 1; i < 41; i++) {
+        for (int i = 1; i < 40; i++) {
             int tdo = 0;
-            int tms = (i == 40) ? 1 : 0;
+            int tms = (i == 39) ? 1 : 0;
             tb.send_oscan1_packet(0, tms, &tdo);
             dmi_result |= ((uint64_t)tdo << i);
         }
@@ -4397,9 +4408,9 @@ TEST_CASE(dmi_stress_test_100_operations) {
 
         tb.send_oscan1_packet(0, 1, nullptr);
         tb.send_oscan1_packet(0, 0, nullptr);
-        for (int i = 1; i < 41; i++) {
+        for (int i = 1; i < 40; i++) {
             int tdi = (dmi_read >> i) & 1;
-            int tms = (i == 40) ? 1 : 0;
+            int tms = (i == 39) ? 1 : 0;
             tb.send_oscan1_packet(tdi, tms, nullptr);
         }
         tb.send_oscan1_packet(0, 1, nullptr);
@@ -4589,13 +4600,14 @@ int main(int argc, char** argv) {
     RUN_TEST(ieee1149_7_selection_sequence);
     RUN_TEST(oac_ec_cp_field_values);
     RUN_TEST(cp_validation_all_bits_correct);
-    RUN_TEST(cp_validation_single_bit_errors);
-    RUN_TEST(cp_validation_multiple_bit_errors);
-    RUN_TEST(cp_validation_with_wrong_ec);
-    RUN_TEST(cp_validation_all_zeros);
-    RUN_TEST(cp_validation_all_ones);
-    RUN_TEST(cp_xor_calculation_verification);
-    RUN_TEST(cp_validation_stress_test);
+    // DISABLED: CP validation no longer enforced for ftdi.c compatibility
+    // RUN_TEST(cp_validation_single_bit_errors);
+    // RUN_TEST(cp_validation_multiple_bit_errors);
+    RUN_TEST(cp_validation_with_wrong_ec);  // Still validates EC field
+    // RUN_TEST(cp_validation_all_zeros);
+    // RUN_TEST(cp_validation_all_ones);
+    RUN_TEST(cp_xor_calculation_verification);  // Math verification only
+    // RUN_TEST(cp_validation_stress_test);
     RUN_TEST(oscan1_format_compliance);
 
     // Debug Module Tests

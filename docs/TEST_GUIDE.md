@@ -2,27 +2,29 @@
 
 ## Overview
 
-The cJTAG Bridge project includes a comprehensive automated test suite with **131 test cases** providing complete coverage of the IEEE 1149.7 cJTAG implementation and RISC-V Debug Module integration. The test suite has grown from the initial 16 tests to 131 tests (a 719% increase), ensuring robust validation of all protocol aspects, edge cases, timing characteristics, hardware compliance, complete RISC-V debug functionality, and **comprehensive CP (Check Packet) parity validation**.
+The cJTAG Bridge project includes a comprehensive automated test suite with **126 test cases** providing complete coverage of the IEEE 1149.7 cJTAG implementation and RISC-V Debug Module integration. The test suite has grown from the initial 16 tests to 126 active tests, ensuring robust validation of all protocol aspects, edge cases, timing characteristics, hardware compliance, and complete RISC-V debug functionality.
+
+**Note**: 5 strict CP (Check Packet) parity validation tests have been disabled for compatibility with ftdi.c driver, which sends incorrect CP=0x0. The bridge now accepts any CP value while still enforcing OAC=0xC and EC=0x8 validation, matching real ARM hardware behavior.
 
 **Test Statistics**:
-- **Total Tests**: 131 (all passing ✅)
+- **Total Tests**: 126 (all passing ✅, 5 strict CP tests disabled for ftdi.c compatibility)
 - **Test File Size**: 5,100+ lines of code
 - **SystemVerilog Assertions**: 41 assertions (29 assert + 14 cover properties)
-- **Coverage**: Protocol compliance, **CP parity validation**, state machine, timing, error recovery, signal integrity, TAP operations, RISC-V debug module (DTMCS, DMI, dmcontrol, dmstatus, hartinfo), stress testing
+- **Coverage**: Protocol compliance, **OAC/EC validation** (CP field lenient for ftdi.c compatibility), state machine, timing, error recovery, signal integrity, TAP operations, RISC-V debug module (DTMCS, DMI, dmcontrol, dmstatus, hartinfo), stress testing
 - **Execution Time**: ~15 seconds (all three test suites combined)
 
 ## Quick Start
 
 ### Run All Tests
 
-To run the complete test suite (all 131 automated tests + VPI IDCODE test + OpenOCD integration test):
+To run the complete test suite (all 126 automated tests + VPI IDCODE test + OpenOCD integration test):
 
 ```bash
 make all
 ```
 
 This command executes:
-1. **Automated Test Suite** (131 tests) - Core functionality validation with CP parity testing
+1. **Automated Test Suite** (126 tests) - Core functionality validation with OAC/EC enforcement (CP lenient)
 2. **VPI IDCODE Test** (100 iterations) - VPI communication stress test
 3. **OpenOCD Integration Test** (18 comprehensive steps) - Real-world OpenOCD testing with detailed statistics
 
@@ -32,7 +34,7 @@ This command executes:
 ✅ VPI IDCODE Test PASSED
 ✅ OpenOCD Test PASSED
 
-Test Results: 131/131 tests passed
+Test Results: 126/126 tests passed
 IDCODE: 0x1DEAD3FF verified successfully (100 iterations)
 OpenOCD: 18/18 test steps passed (100%)
 ```
@@ -42,8 +44,8 @@ OpenOCD: 18/18 test steps passed (100%)
 ### Test Framework
 - **Location**: [tb/test_cjtag.cpp](../tb/test_cjtag.cpp)
 - **Framework**: Custom C++ test harness with Verilator
-- **Total Tests**: 131 comprehensive tests
-- **Coverage**: Full protocol, all states, edge cases, timing, signal integrity, TAP deep dive, comprehensive RISC-V debug module testing, **CP parity validation**
+- **Total Tests**: 126 comprehensive tests
+- **Coverage**: Full protocol, all states, edge cases, timing, signal integrity, TAP deep dive, comprehensive RISC-V debug module testing, **OAC/EC validation** (CP field lenient for ftdi.c compatibility)
 
 ### Test Harness Features
 ```cpp
@@ -62,7 +64,7 @@ class TestHarness {
 
 ## Test Suite Organization
 
-The 131 tests are organized into 13 comprehensive categories:
+The 126 tests are organized into 13 comprehensive categories:
 
 ### Category Breakdown
 1. **Basic Functionality** (18 tests) - Core protocol operations (includes 4-5 toggle deselection)
@@ -76,7 +78,7 @@ The 131 tests are organized into 13 comprehensive categories:
 9. **Synchronizer & Edge Detection** (3 tests) - 2-stage sync, edge detection
 10. **Signal Integrity & Output Verification** (4 tests) - Output signal validation
 11. **Escape Sequence, Packet Boundary & Performance** (28 tests) - Comprehensive coverage
-12. **Protocol Compliance & CP Validation** (11 tests) - IEEE 1149.7 compliance with 8 dedicated CP tests
+12. **Protocol Compliance & Activation** (6 tests) - IEEE 1149.7 compliance with lenient CP handling for ftdi.c compatibility
 13. **RISC-V Debug Module** (20 tests) - Complete DTM, DMI, and debug register testing
 
 ## Complete Test List
@@ -240,14 +242,14 @@ The 131 tests are organized into 13 comprehensive categories:
 | 103 | `cp_validation_all_bits_correct` | CP parity all bits correct |
 | 104 | `cp_validation_single_bit_errors` | CP single-bit error detection |
 | 105 | `cp_validation_multiple_bit_errors` | CP multiple-bit error detection |
-| 106 | `cp_validation_with_wrong_ec` | CP validation with wrong EC field |
-| 107 | `cp_validation_all_zeros` | CP validation all zeros pattern |
-| 108 | `cp_validation_all_ones` | CP validation all ones pattern |
+| 104 | `cp_validation_with_wrong_ec` | OAC/EC validation with wrong EC field |
+| 105 | `cp_xor_calculation_verification` | CP XOR calculation (math verification only) |
+| 106 | `oscan1_format_compliance` | OScan1 3-bit packet format |
 | 109 | `cp_xor_calculation_verification` | CP XOR parity calculation |
 | 110 | `cp_validation_stress_test` | CP parity stress test |
 | 111 | `oscan1_format_compliance` | 3-bit packet format adherence |
 
-### 13. RISC-V Debug Module (Tests 112-131)
+### 13. RISC-V Debug Module (Tests 107-126)
 
 | # | Test Name | Purpose |
 |---|-----------|---------|
@@ -270,7 +272,7 @@ The 131 tests are organized into 13 comprehensive categories:
 | 128 | `dmi_back_to_back_operations` | Operations without RUN_TEST_IDLE |
 | 129 | `mixed_idcode_dtmcs_dmi_sequence` | Interleaved register access |
 | 130 | `debug_module_all_registers` | Read all debug registers |
-| 131 | `dmi_stress_test_100_operations` | 100 DMI operations stress test |
+| 126 | `dmi_stress_test_100_operations` | 100 DMI operations stress test |
 
 ## Running Tests
 
@@ -279,7 +281,7 @@ The 131 tests are organized into 13 comprehensive categories:
 make all
 ```
 Executes all three test suites in sequence:
-- 131 automated tests
+- 126 automated tests
 - 100-iteration VPI IDCODE test
 - 18-step OpenOCD integration test with comprehensive statistics
 
@@ -352,12 +354,12 @@ Running test: 109. cp_xor_calculation_verification ... PASS
 Running test: 110. cp_validation_stress_test ... PASS
 Running test: 111. oscan1_format_compliance ... PASS
 ...
-Running test: 129. mixed_idcode_dtmcs_dmi_sequence ... PASS
-Running test: 130. debug_module_all_registers ... PASS
-Running test: 131. dmi_stress_test_100_operations ... PASS
+Running test: 124. mixed_idcode_dtmcs_dmi_sequence ... PASS
+Running test: 125. debug_module_all_registers ... PASS
+Running test: 126. dmi_stress_test_100_operations ... PASS
 
 ========================================
-Test Results: 131 tests passed
+Test Results: 126 tests passed
 ========================================
 ✅ ALL TESTS PASSED!
 ```
@@ -374,7 +376,7 @@ Test Results: 131 tests passed
   - ✅ XOR calculation verification: CP[i] = OAC[i] ⊕ EC[i]
   - ✅ Invalid EC with matching CP rejection
   - ✅ All-zeros and all-ones CP patterns
-  - ✅ CP validation stress testing
+  - ✅ OAC/EC field validation (CP lenient for compatibility)
 - ✅ OScan1 3-bit packet format
 - ✅ nTDI inversion
 - ✅ TCK generation (3:1 ratio)
@@ -468,7 +470,7 @@ Test Results: 131 tests passed
 
 | Metric | Value |
 |--------|-------|
-| **Total Tests** | 131 |
+| **Total Tests** | 126 |
 | **Pass Rate** | 100% ✅ |
 | **Build Time** | ~5-10 seconds |
 | **Test Execution** | ~5 seconds |
@@ -479,7 +481,7 @@ Test Results: 131 tests passed
 | **State Coverage** | All 4 main states |
 | **TAP State Coverage** | All 16 states |
 | **RISC-V Debug** | DTMCS, DMI, dmcontrol, dmstatus, hartinfo |
-| **CP Validation** | 8 dedicated parity tests |
+| **OAC/EC Validation** | Enforces OAC=0xC, EC=0x8; accepts any CP for ftdi.c compatibility |
 
 ## Key Test Findings & Design Validation
 
@@ -729,7 +731,7 @@ jobs:
       - name: Check Results
         run: |
           if [ $? -eq 0 ]; then
-            echo "✅ All 131 tests passed!"
+            echo "✅ All 126 tests passed!"
           else
             echo "❌ Tests failed"
             exit 1
@@ -762,7 +764,7 @@ echo "✅ All tests passed!"
 
 ### Test Execution Performance
 - **Individual test**: 10-100 ms average
-- **Full suite (131 tests)**: ~15 seconds
+- **Full suite (126 tests)**: ~15 seconds
 - **With waveform**: +2-3 seconds
 - **Memory usage**: ~100 MB
 - **CPU usage**: 1 core, ~50-80%
@@ -854,7 +856,7 @@ echo "✅ All tests passed!"
 - Test 50-52: Deselection escape variations
 - Additional tests for all escape sequence edge cases
 
-**Verification**: All 131 tests pass, confirming reliable operation in all states.
+**Verification**: All 126 tests pass, confirming reliable operation in all states.
 
 ### 2. Free-Running Clock Requirement
 **Decision**: System clock runs continuously at 100MHz.
@@ -887,7 +889,7 @@ The cJTAG bridge RTL includes **41 SystemVerilog assertions** for runtime verifi
 - **Total Assertions**: 41 (29 assert properties + 14 cover properties)
 - **Location**: [src/cjtag/cjtag_bridge.sv](../src/cjtag/cjtag_bridge.sv)
 - **Scope**: Simulation only (`ifndef SYNTHESIS`)
-- **Status**: All assertions passing with 131 test suite ✅
+- **Status**: All assertions passing with 126 test suite ✅
 
 ### Assertion Categories
 
@@ -1076,7 +1078,7 @@ During test execution, assertion violations are reported immediately:
 Aborting...
 ```
 
-**Current Status**: All 41 assertions pass with 131 comprehensive tests ✅
+**Current Status**: All 41 assertions pass with 126 comprehensive tests ✅
 
 ### Formal Verification
 
@@ -1356,8 +1358,8 @@ All tests execute automatically when running `make test-openocd` and produce com
 
 The cJTAG Bridge test suite provides **comprehensive validation** with three distinct test suites:
 
-### 1. Automated Verilator Unit Tests (131 tests)
-- **131 test cases** covering complete protocol implementation (IEEE 1149.7 OScan1)
+### 1. Automated Verilator Unit Tests (126 tests)
+- **126 test cases** covering complete protocol implementation (IEEE 1149.7 OScan1)
 - **41 SystemVerilog assertions** for runtime verification (state machine, counters, signals, timing)
 - **100% pass rate** with zero compilation warnings
 - Full JTAG TAP controller validation (all 16 states)
@@ -1391,7 +1393,7 @@ make all
 **Expected Results** (all tests in ~15 seconds):
 ```
 ✅ ALL TESTS PASSED!
-Test Results: 131/131 tests passed
+Test Results: 126/126 tests passed
 ✅ VPI IDCODE Test PASSED
 IDCODE: 0x1DEAD3FF verified (100 iterations)
 ✅ OpenOCD Test PASSED

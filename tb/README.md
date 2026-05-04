@@ -7,7 +7,7 @@ This directory contains the testbench infrastructure for verifying the cJTAG Bri
 ```
 tb/
 ├── README.md           # This file
-├── test_cjtag.cpp     # Main test suite (131 comprehensive tests)
+├── test_cjtag.cpp     # Main test suite (126 comprehensive tests)
 ├── test_idcode.cpp    # VPI IDCODE verification test
 └── tb_cjtag.cpp       # Verilator testbench wrapper (deprecated)
 ```
@@ -15,11 +15,12 @@ tb/
 ## Files Overview
 
 ### test_cjtag.cpp
-**Primary test suite** with 131 comprehensive automated tests covering all aspects of the cJTAG bridge implementation and RISC-V debug module integration.
+**Primary test suite** with 126 comprehensive automated tests covering all aspects of the cJTAG bridge implementation and RISC-V debug module integration.
 
 **Statistics:**
 - **4,273 lines** of test code
-- **131 test cases** (100% passing)
+- **126 test cases** (100% passing)
+- **5 CP strict validation tests disabled** for ftdi.c compatibility (accepts any CP value while still validating OAC=0xC and EC=0x8)
 - **11 test categories**
 - **~5 second** execution time
 
@@ -151,10 +152,10 @@ Running test: 02. escape_sequence_online_6_edges ... PASS
 ...
 Running test: 129. mixed_idcode_dtmcs_dmi_sequence ... PASS
 Running test: 130. debug_module_all_registers ... PASS
-Running test: 131. dmi_stress_test_100_operations ... PASS
+Running test: 126. dmi_stress_test_100_operations ... PASS
 
 ========================================
-Test Results: 131 tests passed
+Test Results: 126 tests passed
 ========================================
 ✅ ALL TESTS PASSED!
 ```
@@ -300,7 +301,8 @@ RUN_TEST(my_new_test);
 
 | Metric | Value |
 |--------|-------|
-| Total Tests | 131 |
+| Total Tests | 126 |
+| Disabled (CP strict validation) | 5 |
 | Execution Time | ~5 seconds |
 | Build Time | ~5-10 seconds |
 | Memory Usage | ~100 MB |

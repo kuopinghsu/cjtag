@@ -6,7 +6,6 @@
 # Project directories
 SRC_DIR     := src
 TB_DIR      := tb
-VPI_DIR     := vpi
 BUILD_DIR   := build
 
 # Source files
@@ -15,8 +14,7 @@ RTL_SOURCES := $(SRC_DIR)/cjtag/cjtag_bridge.sv \
                $(SRC_DIR)/riscv/riscv_dtm.sv \
                $(SRC_DIR)/top.sv
 
-CPP_SOURCES := $(TB_DIR)/tb_cjtag.cpp \
-               $(VPI_DIR)/jtag_vpi.cpp
+VPI_SOURCES := $(TB_DIR)/tb_vpi.cpp  # VPI testbench for OpenOCD integration
 
 # Verilator configuration
 VERILATOR   := verilator
@@ -43,10 +41,10 @@ VFLAGS      := --cc \
                -LDFLAGS "-lpthread"
 
 # Base CFLAGS (will be extended by VERBOSE flag)
-CFLAGS_BASE := -I$(SRC_DIR) -I$(VPI_DIR) -std=c++14
+CFLAGS_BASE := -I$(SRC_DIR) -std=c++14
 
 # Output binary
-VERILATOR_EXE := $(BUILD_DIR)/V$(TOP_MODULE)
+VPI_EXE := $(BUILD_DIR)/Vtop_vpi
 VERILATOR_TEST := $(BUILD_DIR)/Vtest_$(TOP_MODULE)
 IDCODE_TEST := $(BUILD_DIR)/test_idcode
 
@@ -56,6 +54,9 @@ IDCODE_TEST_SOURCE := $(TB_DIR)/test_idcode.cpp
 
 # VPI Port
 VPI_PORT := 5555
+
+# OpenOCD binary (use OPENOCD=/path/to/openocd to override)
+OPENOCD ?= $(HOME)/opt/openocd/bin/openocd
 
 # Waveform control
 WAVE ?= 0
@@ -75,7 +76,7 @@ VFLAGS += -CFLAGS "$(CFLAGS_BASE)"
 # Targets
 # =============================================================================
 
-.PHONY: all clean build run sim vpi test test-openocd test-idcode help
+.PHONY: all clean test test-openocd test-idcode help
 
 # Default target
 
@@ -85,56 +86,49 @@ help:
 	@echo "cJTAG Bridge Makefile"
 	@echo "=========================================="
 	@echo "Targets:"
-	@echo "  make all          - Test all avaliable tests"
-	@echo "  make build        - Build Verilator simulation"
-	@echo "  make test         - Run automated test suite"
-	@echo "  make test-openocd - Test OpenOCD connection to VPI"
-	@echo "  make test-idcode  - Test VPI IDCODE read"
-	@echo "  make run          - Run simulation (no waveform)"
-	@echo "  make sim          - Run simulation with waveform"
-	@echo "  make WAVE=1       - Run simulation with FST waveform dump"
-	@echo "  make vpi          - Run simulation and wait for OpenOCD"
+	@echo "  make all          - Run all available tests"
+	@echo "  make test         - Run automated test suite (126 tests)"
+	@echo "  make test-openocd - Test OpenOCD integration via VPI"
+	@echo "  make test-idcode  - Test VPI IDCODE read (100 iterations)"
 	@echo "  make clean        - Clean build artifacts"
 	@echo "  make help         - Show this help message"
 	@echo ""
 	@echo "Environment Variables:"
-	@echo "  WAVE=1         - Enable FST waveform dump"
+	@echo "  WAVE=1         - Enable FST waveform dump for test-openocd/test-idcode"
 	@echo "  VERBOSE=1      - Show detailed build output and warnings"
 	@echo "  VPI_PORT=5555  - VPI server port (default: 5555)"
-	@echo "  VERILATOR_THREADS=2  - Parallel threads for simulation (default: 2)"
-	@echo "  OPT_LEVEL=3    - Optimization level 0-3 (default: 3)"
 	@echo ""
 	@echo "Usage Examples:"
-	@echo "  make test                    # Run automated tests"
+	@echo "  make all                     # Run all tests (default)"
+	@echo "  make test                    # Run 126 automated unit tests"
+	@echo "  make test-openocd            # Test OpenOCD integration (18 tests)"
+	@echo "  make test-idcode             # Test VPI IDCODE read (100 iterations)"
+	@echo "  make WAVE=1 test-openocd     # Run OpenOCD test with waveforms"
 	@echo "  make VERBOSE=1 test          # Run tests with verbose output"
-	@echo "  make test-openocd            # Test OpenOCD VPI connection"
-	@echo "  make test-idcode             # Test VPI IDCODE read"
-	@echo "  make WAVE=1                  # Build and run with waveforms"
-	@echo "  VPI_PORT=5555 make vpi       # Run VPI on custom port"
-	@echo "  VERILATOR_THREADS=4 make test  # Use 4 threads for faster simulation"
-	@echo "  OPT_LEVEL=3 make build       # Maximum optimization (default)"
 	@echo "=========================================="
 
 # Test all
 all: test test-idcode test-openocd
 
-# Build the simulation
-build: $(VERILATOR_EXE)
-
-$(VERILATOR_EXE): $(RTL_SOURCES) $(CPP_SOURCES)
+$(VPI_EXE): $(RTL_SOURCES) $(VPI_SOURCES)
 	@mkdir -p $(BUILD_DIR)
 	@echo "=========================================="
-	@echo "Building Verilator simulation..."
+	@echo "Building VPI testbench..."
 	@echo "=========================================="
 	@echo "RTL Sources: $(RTL_SOURCES)"
-	@echo "C++ Sources: $(CPP_SOURCES)"
+	@echo "VPI Source: $(VPI_SOURCES)"
 	@echo ""
-	$(VERILATOR) $(VFLAGS) \
-		--Mdir $(BUILD_DIR) \
+	$(VERILATOR) --cc --exe --build --trace-fst -Wall -Wno-fatal \
+		--top-module $(TOP_MODULE) \
+		--threads 1 \
+		-CFLAGS "-I$(SRC_DIR) -std=c++14 $(if $(filter 1,$(VERBOSE)),-DVERBOSE,)" \
+		-LDFLAGS "-lpthread" \
+		--Mdir $(BUILD_DIR)/vpi_obj \
+		-o ../Vtop_vpi \
 		$(RTL_SOURCES) \
-		$(CPP_SOURCES)
+		$(VPI_SOURCES)
 	@echo ""
-	@echo "Build complete: $(VERILATOR_EXE)"
+	@echo "VPI build complete: $(VPI_EXE)"
 	@echo "=========================================="
 
 $(VERILATOR_TEST): $(RTL_SOURCES) $(TEST_SOURCE)
@@ -196,31 +190,6 @@ test-trace: $(VERILATOR_TEST)
 	@echo ""
 	@echo "Trace saved to: cjtag.fst"
 
-# Run simulation without waveform
-run: build
-	@echo "Running simulation (no waveform)..."
-	@cd $(BUILD_DIR) && ./V$(TOP_MODULE)
-
-# Run simulation with waveform
-sim: WAVE=1
-sim: build
-	@echo "Running simulation with FST waveform..."
-	@WAVE=1 VPI_PORT=$(VPI_PORT) $(VERILATOR_EXE) +trace
-
-# Run and wait for VPI connection
-vpi: build
-	@echo "=========================================="
-	@echo "Starting VPI simulation server..."
-	@echo "=========================================="
-ifeq ($(WAVE),1)
-	@echo "Waveform: Enabled (cjtag.fst)"
-	@WAVE=1 VPI_PORT=$(VPI_PORT) $(VERILATOR_EXE) +trace
-else
-	@echo "Waveform: Disabled"
-	@echo "To enable: make WAVE=1 vpi"
-	@VPI_PORT=$(VPI_PORT) $(VERILATOR_EXE)
-endif
-
 # Clean build artifacts
 clean:
 	@echo "Cleaning build artifacts..."
@@ -269,21 +238,21 @@ test-openocd:
 	@echo "=========================================="
 	@echo "Testing OpenOCD VPI Connection"
 	@echo "=========================================="
-	@echo "Note: Building with single thread for VPI stability..."
-	@$(MAKE) clean > /dev/null 2>&1
-	@VERILATOR_THREADS=1 $(MAKE) build > /dev/null 2>&1
+	@echo "Building dedicated VPI testbench (single-threaded)..."
+	@$(MAKE) $(VPI_EXE) VERILATOR_THREADS=1 VERBOSE=$(VERBOSE) > /dev/null 2>&1
 	@echo "Cleaning up any existing VPI servers..."
 	@pkill -9 Vtop 2>/dev/null || true
-	@pkill -9 openocd 2>/dev/null || true
+	@pkill -9 Vtop_vpi 2>/dev/null || true
+	@pkill -9 -f "$(OPENOCD)" 2>/dev/null || pkill -9 openocd 2>/dev/null || true
 	@sleep 1
 	@echo "Starting VPI server in background..."
 	@if [ "$(WAVE)" = "1" ]; then \
-		echo "Waveform: Enabled (cjtag.fst)"; \
-		WAVE=1 $(VERILATOR_EXE) > openocd_test.log 2>&1 & \
+		echo "Waveform: Enabled (cjtag_vpi.fst)"; \
+		$(VPI_EXE) --trace > openocd_test.log 2>&1 & \
 		VPI_PID=$$!; \
 	else \
 		echo "Waveform: Disabled (use WAVE=1 to enable)"; \
-		$(VERILATOR_EXE) > openocd_test.log 2>&1 & \
+		$(VPI_EXE) > openocd_test.log 2>&1 & \
 		VPI_PID=$$!; \
 	fi; \
 	echo "VPI server PID: $$VPI_PID"; \
@@ -306,11 +275,7 @@ test-openocd:
 	if ps -p $$VPI_PID > /dev/null 2>&1; then \
 		echo "✓ VPI server started successfully"; \
 		echo "Connecting OpenOCD and running test suite (60 second timeout)..."; \
-		if [ "$(VERBOSE)" = "1" ]; then \
-			(timeout 60 openocd -d3 -f openocd/cjtag.cfg > openocd_output.log 2>&1) & \
-		else \
-			(timeout 60 openocd -f openocd/cjtag.cfg > openocd_output.log 2>&1) & \
-		fi; \
+		(timeout 60 $(OPENOCD) -d0 -f openocd/cjtag.cfg > openocd_output.log 2>&1) & \
 		OPENOCD_PID=$$!; \
 		echo "OpenOCD PID: $$OPENOCD_PID"; \
 		wait $$OPENOCD_PID; \
@@ -324,10 +289,9 @@ test-openocd:
 			echo "✗ VPI connection failed"; \
 			tail -30 openocd_output.log; \
 			RESULT=1; \
-		elif grep -q "Connection to.*successful" openocd_output.log && \
-		     grep -q "OScan1 protocol initialized" openocd_output.log; then \
+		elif grep -q "OScan1 protocol activated\|OScan1 active" openocd_output.log; then \
 			echo "✓ OpenOCD connected and OScan1 initialized"; \
-			if grep -q "Test Complete\|Test Suite Summary" openocd_output.log; then \
+			if grep -q "Test Complete\|Test Suite Summary\|ALL TESTS PASSED" openocd_output.log; then \
 				echo "✓ OpenOCD test suite completed"; \
 				if grep -q "IDCODE matches expected value" openocd_output.log; then \
 					echo "✅ IDCODE verified (test suite passed): 0x1DEAD3FF"; \

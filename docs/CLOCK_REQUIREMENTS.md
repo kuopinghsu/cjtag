@@ -79,7 +79,7 @@ If you need to change the TCKC frequency:
 3. **Rebuild**: Compile-time assertion will verify the constraint
 4. **Test**: Run full test suite to verify functionality
    ```bash
-   make test              # 131 Verilator tests
+   make test              # 126 Verilator tests
    make test-idcode       # VPI IDCODE test
    make test-openocd      # 18-step OpenOCD integration test
    ```
@@ -97,7 +97,7 @@ If you need to change the TCKC frequency:
 
 - **Bridge RTL**: `src/cjtag/cjtag_bridge.sv` - Documents clock requirements in header
 - **Testbench**: `tb/tb_cjtag.cpp` - Implements free-running TCKC with verified ratio
-- **VPI Handler**: `vpi/jtag_vpi.cpp` - Updates TMSC synchronized to TCKC edges
+- **VPI Handler**: `tb/tb_vpi.cpp` - OpenOCD integration testbench with controlled clocking
 
 ## References
 
