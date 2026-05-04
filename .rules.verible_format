@@ -1,0 +1,23 @@
+# Verible formatter defaults for JV32 RTL.
+# Loaded with: verible-verilog-format --flagfile=.rules.verible_format
+#
+# Keep this file limited to flags supported by verible-verilog-format.
+# Inline trailing comments after flag values are not supported.
+
+# Line width and indentation
+--column_limit=120
+--indentation_spaces=4
+--line_break_penalty=35
+--wrap_end_else_clauses=true
+--verify_convergence=false
+
+# Alignment
+--assignment_statement_alignment=align
+--enum_assignment_statement_alignment=align
+--module_net_variable_alignment=align
+--port_declarations_alignment=align
+--formal_parameters_alignment=align
+--named_port_alignment=align
+--named_parameter_alignment=align
+--struct_union_members_alignment=align
+
