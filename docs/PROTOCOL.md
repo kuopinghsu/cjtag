@@ -98,7 +98,7 @@ The cJTAG adapter operates in four states:
 
 3. **ONLINE_ACT** (Activation state)
    - Receiving 12-bit activation packet
-   - Validates OAC, EC, and CP fields
+   - Validates OAC and EC fields (CP field accepted for compatibility)
 
 4. **OSCAN1** (Active state)
    - Adapter actively translates 2-wire protocol to 4-wire JTAG
@@ -148,9 +148,9 @@ To transition from OFFLINE to ONLINE state, execute the following sequence:
 
 **Result**: CP = `0100` (LSB first)
 
-The RTL validates the CP field by recalculating it and comparing with the received value. If CP doesn't match, the activation packet is rejected and the bridge returns to OFFLINE state.
+**CP Validation Note**: The RTL implementation validates **OAC** and **EC** fields strictly (must be 0xC and 0x8 respectively), but accepts **any CP value** for compatibility with the ftdi.c driver, which sends CP=0x0. This lenient CP handling matches real ARM hardware behavior while maintaining protocol robustness through OAC/EC validation.
 
-If activation succeeds (OAC=1100, EC=1000, CP valid), the adapter enters ONLINE state and begins Oscan1 protocol operation.
+If activation succeeds (OAC=0xC, EC=0x8, any CP), the adapter enters ONLINE state and begins Oscan1 protocol operation. Invalid OAC or EC values will cause the activation packet to be rejected and the bridge will return to OFFLINE state.
 
 ### 2. Oscan1 Data Protocol (ONLINE State)
 
@@ -301,4 +301,4 @@ Physical debug connectors often retain standard 14-pin or 20-pin headers even fo
 
 ---
 
-**Last Updated**: January 2026
+**Last Updated**: May 2026

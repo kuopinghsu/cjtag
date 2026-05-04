@@ -81,7 +81,7 @@ If you need to change the TCKC frequency:
    ```bash
    make test              # 126 Verilator tests
    make test-idcode       # VPI IDCODE test
-   make test-openocd      # 18-step OpenOCD integration test
+   make test-openocd      # 8 OpenOCD integration tests
    ```
 
 ### Example Configurations

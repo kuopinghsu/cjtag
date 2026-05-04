@@ -706,14 +706,22 @@ IOBUF u_tmsc_iobuf (
 
 ### Check Packet (CP) Validation
 
-The cJTAG bridge implements mandatory CP field validation for IEEE 1149.7 compliance.
+The cJTAG bridge implements **lenient CP field validation** for compatibility with real-world hardware (ftdi.c driver compatibility).
 
-**CP Calculation:**
-- CP field provides bit-wise XOR parity: CP[i] = OAC[i] ⊕ EC[i]
-- Validates data integrity during the 12-bit activation sequence
-- Rejects activation packets with incorrect CP values
+**Implementation Strategy:**
+- **OAC and EC fields**: Strictly validated (must be 0xC and 0x8)
+- **CP field**: Accepts any value (lenient validation)
+- IEEE 1149.7 specifies: CP[i] = OAC[i] ⊕ EC[i]
+- Real ARM hardware accepts incorrect CP values
+- This implementation matches ARM hardware behavior
 
-**Example:**
+**Rationale:**
+- ftdi.c driver sends CP=0x0 (incorrect per IEEE 1149.7 spec)
+- Strict CP validation would break compatibility with common debug probes
+- ARM hardware accepts any CP value while validating OAC/EC
+- This implementation prioritizes real-world interoperability
+
+**Example (Correct CP per spec):**
 ```
 OAC = 1100 (LSB first: 0,0,1,1)
 EC  = 1000 (LSB first: 0,0,0,1)
@@ -723,6 +731,8 @@ CP[0] = OAC[0] ⊕ EC[0] = 0 ⊕ 0 = 0
 CP[1] = OAC[1] ⊕ EC[1] = 0 ⊕ 0 = 0
 CP[2] = OAC[2] ⊕ EC[2] = 1 ⊕ 0 = 1
 CP[3] = OAC[3] ⊕ EC[3] = 1 ⊕ 1 = 0
+
+Note: Implementation also accepts CP=0x0 (ftdi.c compatibility)
 ```
 
 ### Physical Layer Considerations
@@ -1021,6 +1031,6 @@ At TCKC = 10 MHz:
 
 ---
 
-**Last Updated**: January 2026
+**Last Updated**: May 2026
 **Architecture Version**: 2.0 (System Clock Based)
 **Status**: ✅ Production - All tests passing

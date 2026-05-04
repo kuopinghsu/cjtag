@@ -78,7 +78,7 @@ The 126 tests are organized into 13 comprehensive categories:
 9. **Synchronizer & Edge Detection** (3 tests) - 2-stage sync, edge detection
 10. **Signal Integrity & Output Verification** (4 tests) - Output signal validation
 11. **Escape Sequence, Packet Boundary & Performance** (28 tests) - Comprehensive coverage
-12. **Protocol Compliance & Activation** (6 tests) - IEEE 1149.7 compliance with lenient CP handling for ftdi.c compatibility
+12. **Protocol Compliance & Activation** (3 tests) - IEEE 1149.7 compliance (5 strict CP validation tests disabled for ftdi.c compatibility)
 13. **RISC-V Debug Module** (20 tests) - Complete DTM, DMI, and debug register testing
 
 ## Complete Test List
@@ -238,40 +238,49 @@ The 126 tests are organized into 13 comprehensive categories:
 | 99 | `walking_ones_pattern` | Walking 1s pattern |
 | 100 | `walking_zeros_pattern` | Walking 0s pattern |
 | 101 | `ieee1149_7_selection_sequence` | Proper activation sequence |
-| 102 | `oac_ec_cp_field_values` | OAC field validation |
-| 103 | `cp_validation_all_bits_correct` | CP parity all bits correct |
-| 104 | `cp_validation_single_bit_errors` | CP single-bit error detection |
-| 105 | `cp_validation_multiple_bit_errors` | CP multiple-bit error detection |
-| 104 | `cp_validation_with_wrong_ec` | OAC/EC validation with wrong EC field |
-| 105 | `cp_xor_calculation_verification` | CP XOR calculation (math verification only) |
-| 106 | `oscan1_format_compliance` | OScan1 3-bit packet format |
-| 109 | `cp_xor_calculation_verification` | CP XOR parity calculation |
-| 110 | `cp_validation_stress_test` | CP parity stress test |
-| 111 | `oscan1_format_compliance` | 3-bit packet format adherence |
+| 102 | `oac_ec_cp_field_values` | OAC/EC field validation |
+| 103 | `cp_validation_all_bits_correct` | CP parity validation (all bits correct) |
+
+### 12. Protocol Compliance & Activation (Tests 104-106)
+
+| # | Test Name | Purpose |
+|---|-----------|------|
+| 104 | `cp_validation_with_wrong_ec` | Validates EC field enforcement (EC must be 0x8) |
+| 105 | `cp_xor_calculation_verification` | CP XOR parity calculation (math verification only, not hardware enforcement) |
+| 106 | `oscan1_format_compliance` | OScan1 3-bit packet format adherence |
+
+**Note**: The following 5 CP (Check Packet) validation tests are **DISABLED** for ftdi.c compatibility (ftdi.c sends CP=0x0):
+- `cp_validation_single_bit_errors` - CP single-bit error detection
+- `cp_validation_multiple_bit_errors` - CP multiple-bit error detection  
+- `cp_validation_all_zeros` - All-zeros CP pattern validation
+- `cp_validation_all_ones` - All-ones CP pattern validation
+- `cp_validation_stress_test` - CP parity stress test
+
+These disabled tests would have been numbered 107-111 if enabled. The bridge now accepts any CP value while still enforcing OAC=0xC and EC=0x8 validation, matching real ARM hardware behavior.
 
 ### 13. RISC-V Debug Module (Tests 107-126)
 
 | # | Test Name | Purpose |
 |---|-----------|---------|
-| 112 | `dtmcs_register_read` | RISC-V DTMCS register access |
-| 113 | `dtmcs_register_format` | DTMCS register field validation |
-| 114 | `dmi_register_access` | RISC-V DMI register operations |
-| 115 | `debug_module_ir_scan` | IR scan with instruction readback |
-| 116 | `dmi_write_dmcontrol` | DMI write to dmcontrol register |
-| 117 | `dmi_read_after_write` | Write-then-read sequence validation |
-| 118 | `dmi_hartinfo_register` | Read hartinfo register (0x16) |
-| 119 | `dmi_invalid_address` | Invalid DMI address handling |
-| 120 | `dtmcs_dmistat_field` | DTMCS dmistat error reporting |
-| 121 | `sequential_dmi_reads` | Multiple DMI reads without IR change |
-| 122 | `rapid_dtmcs_dmi_switching` | Rapid instruction switching |
-| 123 | `dmi_41bit_boundary_test` | 41-bit DMI register full width test |
-| 124 | `complete_riscv_debug_init` | Full IDCODE→DTMCS→DMI→dmstatus flow |
-| 125 | `dmcontrol_reset_bit` | dmcontrol.dmactive field test |
-| 126 | `dmstatus_halt_flags` | anyhalted/allhalted flag validation |
-| 127 | `dmstatus_reset_flags` | anyhavereset/allhavereset validation |
-| 128 | `dmi_back_to_back_operations` | Operations without RUN_TEST_IDLE |
-| 129 | `mixed_idcode_dtmcs_dmi_sequence` | Interleaved register access |
-| 130 | `debug_module_all_registers` | Read all debug registers |
+| 107 | `dtmcs_register_read` | RISC-V DTMCS register access |
+| 108 | `dtmcs_register_format` | DTMCS register field validation |
+| 109 | `dmi_register_access` | RISC-V DMI register operations |
+| 110 | `debug_module_ir_scan` | IR scan with instruction readback |
+| 111 | `dmi_write_dmcontrol` | DMI write to dmcontrol register |
+| 112 | `dmi_read_after_write` | Write-then-read sequence validation |
+| 113 | `dmi_hartinfo_register` | Read hartinfo register (0x16) |
+| 114 | `dmi_invalid_address` | Invalid DMI address handling |
+| 115 | `dtmcs_dmistat_field` | DTMCS dmistat error reporting |
+| 116 | `sequential_dmi_reads` | Multiple DMI reads without IR change |
+| 117 | `rapid_dtmcs_dmi_switching` | Rapid instruction switching |
+| 118 | `dmi_41bit_boundary_test` | 41-bit DMI register full width test |
+| 119 | `complete_riscv_debug_init` | Full IDCODE→DTMCS→DMI→dmstatus flow |
+| 120 | `dmcontrol_reset_bit` | dmcontrol.dmactive field test |
+| 121 | `dmstatus_halt_flags` | anyhalted/allhalted flag validation |
+| 122 | `dmstatus_reset_flags` | anyhavereset/allhavereset validation |
+| 123 | `dmi_back_to_back_operations` | Operations without RUN_TEST_IDLE |
+| 124 | `mixed_idcode_dtmcs_dmi_sequence` | Interleaved register access |
+| 125 | `debug_module_all_registers` | Read all debug registers |
 | 126 | `dmi_stress_test_100_operations` | 100 DMI operations stress test |
 
 ## Running Tests
@@ -345,14 +354,9 @@ Running test: 52. deselection_from_offline ... PASS
 Running test: 101. ieee1149_7_selection_sequence ... PASS
 Running test: 102. oac_ec_cp_field_values ... PASS
 Running test: 103. cp_validation_all_bits_correct ... PASS
-Running test: 104. cp_validation_single_bit_errors ... PASS
-Running test: 105. cp_validation_multiple_bit_errors ... PASS
-Running test: 106. cp_validation_with_wrong_ec ... PASS
-Running test: 107. cp_validation_all_zeros ... PASS
-Running test: 108. cp_validation_all_ones ... PASS
-Running test: 109. cp_xor_calculation_verification ... PASS
-Running test: 110. cp_validation_stress_test ... PASS
-Running test: 111. oscan1_format_compliance ... PASS
+Running test: 104. cp_validation_with_wrong_ec ... PASS
+Running test: 105. cp_xor_calculation_verification ... PASS
+Running test: 106. oscan1_format_compliance ... PASS
 ...
 Running test: 124. mixed_idcode_dtmcs_dmi_sequence ... PASS
 Running test: 125. debug_module_all_registers ... PASS
