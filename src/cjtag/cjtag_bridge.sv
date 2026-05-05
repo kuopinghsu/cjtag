@@ -29,13 +29,6 @@
 //    - Ratio: 100ns / 10ns = 10 system clocks per TCKC period (MEETS requirement >= 6)
 //    - TCKC toggle every 5 system clocks = 50ns high, 50ns low (MEETS requirement >= 30ns)
 //
-// CP (CHECK PARITY) VALIDATION:
-// - The IEEE 1149.7 specification requires CP = OAC ⊕ EC for activation packets
-// - OpenOCD's ftdi.c sends CP=0x0 (incorrect), should be 0xC ⊕ 0x8 = 0x4
-// - Real ARM CoreSight hardware is lenient and accepts incorrect CP values
-// - By default, this RTL skips CP checking for tool compatibility
-// - To enable strict IEEE 1149.7 compliance, define: CJTAG_STRICT_CP_CHECK
-// - Note: jtag_vpi.c correctly sends CP=0x4 and does NOT need modification
 // =============================================================================
 
 module cjtag_bridge (
@@ -105,6 +98,11 @@ module cjtag_bridge (
     logic          tmsc_oen_int;  // TMSC output enable (registered)
     logic          tck_rise_req;  // One-cycle pulse: raise TCK next cycle
     logic          tck_fall_req;  // One-cycle pulse: lower TCK next cycle (after DTS samples TDO)
+
+`ifdef VERBOSE
+    // Debug state tracking
+    logic [2:0] prev_state;  // Previous state for change detection
+`endif
 
     // =========================================================================
     // Input Synchronizers - 2-stage for metastability protection
@@ -195,12 +193,19 @@ module cjtag_bridge (
     // =========================================================================
     always_ff @(posedge clk_i or negedge ntrst_i) begin
         if (!ntrst_i) begin
-            state            <= ST_OFFLINE;
-            return_state     <= ST_OFFLINE;
-            activation_shift <= 11'd0;
-            activation_count <= 4'd0;
-            bit_pos          <= 2'd0;
-            tmsc_sampled     <= 1'b0;
+            state             <= ST_OFFLINE;
+            return_state      <= ST_OFFLINE;
+            activation_shift  <= 11'd0;
+            activation_count  <= 4'd0;
+            bit_pos           <= 2'd0;
+            tmsc_sampled      <= 1'b0;
+            tmsc_toggle_count <= 5'd0;
+            tck_int           <= 1'b0;
+            tms_int           <= 1'b1;
+            tdi_int           <= 1'b0;
+            tmsc_oen_int      <= 1'b1;
+            tck_rise_req      <= 1'b0;
+            tck_fall_req      <= 1'b0;
         end
         else begin
             case (state)
@@ -316,21 +321,14 @@ module cjtag_bridge (
                             // OAC: bits [3:0], EC: bits [7:4], CP: bits [11:8]
 
 `ifdef VERBOSE
-                            begin
-                                logic [11:0] full_packet;
-                                logic [3:0] oac_field, ec_field, cp_field, calc_cp;
-                                full_packet = {tmsc_s, activation_shift[10:0]};
-                                oac_field   = full_packet[3:0];
-                                ec_field    = full_packet[7:4];
-                                cp_field    = full_packet[11:8];
-                                calc_cp     = oac_field ^ ec_field;
-
-                                $display("[%0t] Checking activation packet:", $time);
-                                $display("    Full packet: %b", full_packet);
-                                $display("    OAC=%b (expected=1100), EC=%b (expected=1000), CP=%b", oac_field,
-                                         ec_field, cp_field);
-                                $display("    Calculated CP=%b, CP valid=%b", calc_cp, cp_field == calc_cp);
-                            end
+                            $display("[%0t] Checking activation packet:", $time);
+                            $display("    Full packet: %b", {tmsc_s, activation_shift[10:0]});
+                            $display("    OAC=%b (expected=1100), EC=%b (expected=1000), CP=%b",
+                                     activation_shift[3:0], activation_shift[7:4], {
+                                     tmsc_s, activation_shift[10:8]});
+                            $display("    Calculated CP=%b, CP valid=%b",
+                                     activation_shift[3:0] ^ activation_shift[7:4],
+                                     {tmsc_s, activation_shift[10:8]} == (activation_shift[3:0] ^ activation_shift[7:4]));
 `endif
 
                             // Validate activation packet:
@@ -343,41 +341,49 @@ module cjtag_bridge (
                             // By default, CP is NOT checked for tool compatibility.
                             // Define CJTAG_STRICT_CP_CHECK to enable strict IEEE 1149.7 compliance.
 `ifdef CJTAG_STRICT_CP_CHECK
-                            logic [3:0] calc_cp;
-                            calc_cp = activation_shift[3:0] ^ activation_shift[7:4];  // OAC ⊕ EC
-                            if (activation_shift[3:0] == 4'b1100 && 
+                            if (activation_shift[3:0] == 4'b1100 &&
                                 activation_shift[7:4] == 4'b1000 &&
-                                {tmsc_s, activation_shift[10:8]} == calc_cp) begin
-`else
-                            if (activation_shift[3:0] == 4'b1100 && activation_shift[7:4] == 4'b1000) begin
-`endif
+                                {tmsc_s, activation_shift[10:8]} == (activation_shift[3:0] ^ activation_shift[7:4])) begin
+
                                 state   <= ST_OSCAN1;
                                 bit_pos <= 2'd0;
-
 `ifdef VERBOSE
                                 $display("[%0t] ONLINE_ACT -> OSCAN1 (activation packet valid!)", $time);
 `endif
                             end
                             else begin
                                 state <= ST_OFFLINE;
-
 `ifdef VERBOSE
-                                if ({tmsc_s, activation_shift[10:8]} !=
-                                    (activation_shift[3:0] ^ activation_shift[7:4])) begin
-                                    $display("[%0t] ONLINE_ACT -> OFFLINE (CP parity error: rx=%b calc=%b)", $time, {
-                                             tmsc_s, activation_shift[10:8]},
-                                             (activation_shift[3:0] ^ activation_shift[7:4]));
+                                if (activation_shift[3:0] != 4'b1100) begin
+                                     $display("[%0t] ONLINE_ACT -> OFFLINE (invalid OAC: %b)", $time,
+                                             activation_shift[3:0]);
                                 end
-                                else if (activation_shift[3:0] != 4'b1100) begin
+                                else begin
+                                     $display("[%0t] ONLINE_ACT -> OFFLINE (invalid EC: %b)", $time, activation_shift[7:4]);
+                                end
+`endif
+                            end
+`else
+                            if (activation_shift[3:0] == 4'b1100 && activation_shift[7:4] == 4'b1000) begin
+                                state   <= ST_OSCAN1;
+                                bit_pos <= 2'd0;
+`ifdef VERBOSE
+                                $display("[%0t] ONLINE_ACT -> OSCAN1 (activation packet valid!)", $time);
+`endif
+                            end
+                            else begin
+                                state <= ST_OFFLINE;
+`ifdef VERBOSE
+                                if (activation_shift[3:0] != 4'b1100) begin
                                     $display("[%0t] ONLINE_ACT -> OFFLINE (invalid OAC: %b)", $time,
                                              activation_shift[3:0]);
                                 end
                                 else begin
-                                    $display("[%0t] ONLINE_ACT -> OFFLINE (invalid EC: %b)", $time,
-                                             activation_shift[7:4]);
+                                    $display("[%0t] ONLINE_ACT -> OFFLINE (invalid EC: %b)", $time, activation_shift[7:4]);
                                 end
 `endif
                             end
+`endif
                             activation_count <= 4'd0;
                         end
                         else begin
@@ -526,10 +532,8 @@ module cjtag_bridge (
                         tms_int      <= tmsc_sampled;  // Commit TMS before TCK rises
                         tck_rise_req <= 1'b1;          // Raise TCK next cycle
                         tmsc_oen_int <= 1'b0;          // Open TDO window (pre-shift value)
-
 `ifdef VERBOSE
-                        $display("[%0t] OSCAN1 negedge: bit_pos=2, tms_int->%b, requesting TCK rise", $time,
-                                 tmsc_sampled);
+                        $display("[%0t] OSCAN1 negedge: bit_pos=2, tms_int->%b, TCK rise + TDO window open", $time, tmsc_sampled);
 `endif
                     end
 
@@ -593,16 +597,13 @@ module cjtag_bridge (
 
 `ifdef VERBOSE
     // Monitor state changes
-    logic [2:0] prev_state;
     always_ff @(posedge clk_i or negedge ntrst_i) begin
         if (!ntrst_i) begin
-            prev_state <= 3'd0;  // ST_OFFLINE
+            prev_state <= 3'd0;
         end
-        else begin
-            if (state != prev_state) begin
-                $display("[%0t] STATE CHANGE: %0d -> %0d", $time, prev_state, state);
-                prev_state <= state;
-            end
+        else if (state != prev_state) begin
+            $display("[%0t] STATE CHANGE: %0d -> %0d", $time, prev_state, state);
+            prev_state <= state;
         end
     end
 `endif
