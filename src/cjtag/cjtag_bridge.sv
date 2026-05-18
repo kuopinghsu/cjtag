@@ -199,13 +199,6 @@ module cjtag_bridge (
             activation_count  <= 4'd0;
             bit_pos           <= 2'd0;
             tmsc_sampled      <= 1'b0;
-            tmsc_toggle_count <= 5'd0;
-            tck_int           <= 1'b0;
-            tms_int           <= 1'b1;
-            tdi_int           <= 1'b0;
-            tmsc_oen_int      <= 1'b1;
-            tck_rise_req      <= 1'b0;
-            tck_fall_req      <= 1'b0;
         end
         else begin
             case (state)
@@ -334,7 +327,7 @@ module cjtag_bridge (
                             // Validate activation packet:
                             // - OAC must be 4'b1100 (select JTAG TAP)
                             // - EC must be 4'b1000 (enable OScan1)
-                            // - CP should be OAC⊕EC = 4'b0100 per IEEE 1149.7
+                            // - CP should be OAC^EC = 4'b0100 per IEEE 1149.7
                             //
                             // CP CHECK COMPATIBILITY:
                             // OpenOCD ftdi.c sends CP=0x0 (bug), but real ARM hardware accepts it.
@@ -477,7 +470,7 @@ module cjtag_bridge (
                     //                             tdo_i = pre-shift TDO (from last TCK negedge)
                     //   TCKC negedge + 1 clk:     TCK raised; TAP posedge shifts register
                     //   TCKC posedge (bit_pos=2): DTS samples TMSC = pre-shift TDO (rising edge sample);
-                    //                             tmsc_oen→1; TCK fall scheduled
+                    //                             tmsc_oen->1; TCK fall scheduled
                     //   TCKC posedge + 1 clk:     TCK falls; TAP negedge updates tdo_o (post-shift)
 
                     // On TCKC posedge - sample TMSC, update JTAG inputs, present TDO
@@ -512,7 +505,7 @@ module cjtag_bridge (
                                 tmsc_oen_int <= 1'b1;  // End TDO window; return to input
 
 `ifdef VERBOSE
-                                $display("[%0t] OSCAN1 posedge: bit_pos=2, tck low, tms_int=%b (committed on negedge)",
+                                $display("[%0t] OSCAN1 posedge: bit_pos=2, scheduling TCK fall, tms_int=%b",
                                          $time, tms_int);
 `endif
                             end
@@ -580,12 +573,15 @@ module cjtag_bridge (
     assign tms_o    = tms_int;
     assign tdi_o    = tdi_int;
 
-    // TMSC output: present tdo_i (the TAP's combinatorial TDO output, wired to
-    // tdo_comb_o in top.sv) when the bridge is in output mode (tmsc_oen_int=0).
+    // TMSC output: present tdo_i (the TAP's negedge-registered tdo_o, wired to
+    // tap_tdo in jtag_top.sv) when the bridge is in output mode (tmsc_oen_int=0).
     // The TDO window opens one sys-clock before TCK rises (on TCKC negedge at
-    // bit_pos=2).  After TCK rises and the TAP shift register updates, tdo_comb_o
-    // immediately reflects the new shift-register LSB.  By the time the DTS
-    // samples TMSC on TCKC posedge, tdo_i holds the freshly-shifted-out bit.
+    // bit_pos=2).  At that point tdo_i holds the TAP's TDO from the *previous*
+    // TCK negedge (standard 1-cycle JTAG TDO latency: the probe sees TDO[N-1]
+    // in OScan1 cycle N).  TCK rises ~1 sys-clock after the window opens;
+    // tdo_o does not update until the following TCK negedge, so tdo_i remains
+    // stable throughout the entire TDO window until the probe samples on TCKC
+    // posedge.  This matches IEEE 1149.1 shift-register output timing. ✓
     assign tmsc_o   = !tmsc_oen_int ? tdo_i : 1'b0;
 
     // TMSC output enable: Registered, changes on rising edge
